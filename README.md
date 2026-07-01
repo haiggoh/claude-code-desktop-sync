@@ -79,9 +79,15 @@ servers to Desktop" / "why isn't my github connector in Desktop?") and it loads 
 
 Once installed there's nothing to do — it runs at each Code session start. To sync on demand:
 
-```bash
-python3 ~/.claude/desktop-sync/sync_code_desktop.py
-```
+- **Plugin install (Option A):** ask Claude to "sync my MCP servers to Desktop", or invoke the
+  companion skill `/claude-code-desktop-sync:desktop-sync`. The engine lives in the versioned plugin
+  cache (e.g. `~/.claude/plugins/cache/haiggoh/claude-code-desktop-sync/<version>/bin/sync_code_desktop.py`),
+  so don't hardcode its path — the skill resolves it for you.
+- **Standalone install (Option B):** run the copied engine directly:
+
+  ```bash
+  python3 ~/.claude/desktop-sync/sync_code_desktop.py
+  ```
 
 Example output when you've added a server in Code:
 

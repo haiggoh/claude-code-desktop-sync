@@ -4,10 +4,12 @@
 - `install.py` copies the engine to `~/.claude/desktop-sync/sync_code_desktop.py` and registers a
   **SessionStart hook** in `~/.claude/settings.json` so it runs at the start of every Claude Code session.
 - It is **silent** unless it changes something or a manual step is pending.
-- Run it by hand anytime:
+- Run it by hand anytime (standalone install):
   ```
   python3 ~/.claude/desktop-sync/sync_code_desktop.py
   ```
+- **Plugin install:** the engine is in the versioned plugin cache, not at the path above — invoke the
+  `desktop-sync` skill (or ask Claude to sync) instead of hardcoding a path.
 
 ## Config locations
 | File | Path |
