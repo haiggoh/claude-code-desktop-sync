@@ -1,7 +1,7 @@
 {
   "name": "claude-code-desktop-sync",
   "displayName": "Claude Code ⇄ Desktop Sync",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Keeps MCP-server config in sync between Claude Code and Claude Desktop via a SessionStart hook, and reports the manual steps for anything that can't be auto-synced.",
   "author": {
     "name": "Heiko Brantsch",
