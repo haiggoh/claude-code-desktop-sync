@@ -16,7 +16,7 @@
 | Claude Code settings/hooks | `~/.claude/settings.json` |
 | Claude Code skills | `~/.claude/skills/` |
 | Desktop config (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Desktop config (Windows) | `%APPDATA%\\Claude\\claude_desktop_config.json` |
+| Desktop config (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
 | Desktop config (Linux) | `$XDG_CONFIG_HOME/Claude/claude_desktop_config.json` (or `~/.config/Claude/...`) |
 | Sync state + backups | `~/.claude/desktop-sync/` (override with `CLAUDE_SYNC_HOME`) |
 
