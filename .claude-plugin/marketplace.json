@@ -1,0 +1,16 @@
+{
+  "name": "haiggoh",
+  "owner": {
+    "name": "Heiko Brantsch",
+    "url": "https://github.com/haiggoh"
+  },
+  "plugins": [
+    {
+      "name": "claude-code-desktop-sync",
+      "source": "./",
+      "description": "Keeps MCP-server config in sync between Claude Code and Claude Desktop via a SessionStart hook, and reports the manual steps for anything that can't be auto-synced.",
+      "category": "productivity",
+      "tags": ["mcp", "sync", "claude-desktop", "configuration"]
+    }
+  ]
+}

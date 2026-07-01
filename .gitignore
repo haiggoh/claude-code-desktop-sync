@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local sync runtime (should never be committed — may contain tokens)
+last-sync-state.json
+backups/
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
