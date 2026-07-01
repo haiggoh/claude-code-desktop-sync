@@ -10,6 +10,5 @@
   "homepage": "https://github.com/haiggoh/claude-code-desktop-sync",
   "repository": "https://github.com/haiggoh/claude-code-desktop-sync",
   "license": "MIT",
-  "keywords": ["mcp", "sync", "claude-desktop", "hooks", "configuration"],
-  "hooks": "./hooks/hooks.json"
+  "keywords": ["mcp", "sync", "claude-desktop", "hooks", "configuration"]
 }
