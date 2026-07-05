@@ -11,6 +11,13 @@
       "description": "Keeps MCP-server config in sync between Claude Code and Claude Desktop via a SessionStart hook, and reports the manual steps for anything that can't be auto-synced.",
       "category": "productivity",
       "tags": ["mcp", "sync", "claude-desktop", "configuration"]
+    },
+    {
+      "name": "no-hidden-changes",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/no-hidden-changes.git" },
+      "description": "Steer Claude toward visible, honest, reversible changes and away from hidden-state workarounds that make a tool's own UI look empty, absent, or deceptive.",
+      "category": "productivity",
+      "tags": ["skill", "hook", "transparency", "ux", "safety"]
     }
   ]
 }
