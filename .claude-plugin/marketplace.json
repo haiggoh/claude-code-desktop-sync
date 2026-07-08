@@ -18,6 +18,13 @@
       "description": "Steer Claude toward visible, honest, reversible changes and away from hidden-state workarounds that make a tool's own UI look empty, absent, or deceptive.",
       "category": "productivity",
       "tags": ["skill", "hook", "transparency", "ux", "safety"]
+    },
+    {
+      "name": "measure-twice",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/measure-twice.git" },
+      "description": "Before building automation, survey for what already exists and match the mechanism's trigger to the event that makes it relevant. Sibling of no-hidden-changes.",
+      "category": "productivity",
+      "tags": ["skill", "hook", "automation", "planning", "design"]
     }
   ]
 }
