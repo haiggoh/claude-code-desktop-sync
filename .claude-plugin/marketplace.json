@@ -25,6 +25,13 @@
       "description": "Before building automation, survey for what already exists and match the mechanism's trigger to the event that makes it relevant. Sibling of no-hidden-changes.",
       "category": "productivity",
       "tags": ["skill", "hook", "automation", "planning", "design"]
+    },
+    {
+      "name": "resume-interrupted",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/resume-interrupted.git" },
+      "description": "Detects when your most recent session was cut off mid-task (usage limit, crash, or dropped connection) and proactively offers to pick up where you left off.",
+      "category": "productivity",
+      "tags": ["skill", "hook", "sessions", "resume", "continuity"]
     }
   ]
 }
