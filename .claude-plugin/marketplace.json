@@ -32,6 +32,13 @@
       "description": "Detects when your most recent session was cut off mid-task (usage limit, crash, or dropped connection) and proactively offers to pick up where you left off.",
       "category": "productivity",
       "tags": ["skill", "hook", "sessions", "resume", "continuity"]
+    },
+    {
+      "name": "mcp-smoke-test",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/mcp-smoke-test.git" },
+      "description": "Onboard and verify any MCP that drives an external app: smoke test, functional capability probe, evidence-based manual, and interactive prereq-ladder guide — with parametrized templates.",
+      "category": "productivity",
+      "tags": ["skill", "mcp", "testing", "probe", "onboarding"]
     }
   ]
 }
