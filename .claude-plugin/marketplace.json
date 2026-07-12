@@ -48,8 +48,8 @@
       "tags": ["skill", "hook", "reminders", "todo", "sessions", "continuity"]
     },
     {
-      "name": "audit",
-      "source": { "source": "url", "url": "https://github.com/haiggoh/audit.git" },
+      "name": "audit-loose-ends",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/audit-loose-ends.git" },
       "description": "End-of-task reconciliation of your durable records (memories, project notes, reminders, task list, and the waypoints store) so nothing is left redundant, orphaned, or falsely flagged as to-do when it's already done. SessionStart nudge + skill. Companion to waypoints; distinct from no-hidden-changes (which reconciles a rule once at first run).",
       "category": "productivity",
       "tags": ["skill", "hook", "sessions", "housekeeping", "records", "waypoints"]
