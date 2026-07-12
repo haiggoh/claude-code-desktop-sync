@@ -39,6 +39,13 @@
       "description": "Onboard and verify any MCP that drives an external app: smoke test, functional capability probe, evidence-based manual, and interactive prereq-ladder guide — with parametrized templates.",
       "category": "productivity",
       "tags": ["skill", "mcp", "testing", "probe", "onboarding"]
+    },
+    {
+      "name": "waypoints",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/waypoints.git" },
+      "description": "Surfaces your open tasks / to-dos as a persistent SessionStart banner ('waypoints' still ahead of you) that stays until each is marked done. Forward-looking companion to resume-interrupted; distinct from Claude Code's native rewind checkpoints. Supports optional surface-on dates. Disable via /plugin if unwanted.",
+      "category": "productivity",
+      "tags": ["skill", "hook", "reminders", "todo", "sessions", "continuity"]
     }
   ]
 }
