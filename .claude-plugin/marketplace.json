@@ -46,6 +46,13 @@
       "description": "Surfaces your open tasks / to-dos as a persistent SessionStart banner ('waypoints' still ahead of you) that stays until each is marked done. Forward-looking companion to resume-interrupted; distinct from Claude Code's native rewind checkpoints. Supports optional surface-on dates. Disable via /plugin if unwanted.",
       "category": "productivity",
       "tags": ["skill", "hook", "reminders", "todo", "sessions", "continuity"]
+    },
+    {
+      "name": "audit",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/audit.git" },
+      "description": "End-of-task reconciliation of your durable records (memories, project notes, reminders, task list, and the waypoints store) so nothing is left redundant, orphaned, or falsely flagged as to-do when it's already done. SessionStart nudge + skill. Companion to waypoints; distinct from no-hidden-changes (which reconciles a rule once at first run).",
+      "category": "productivity",
+      "tags": ["skill", "hook", "sessions", "housekeeping", "records", "waypoints"]
     }
   ]
 }
