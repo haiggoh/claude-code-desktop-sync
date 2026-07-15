@@ -53,6 +53,13 @@
       "description": "End-of-task reconciliation of your durable records (memories, project notes, reminders, task list, and the waypoints store) so nothing is left redundant, orphaned, or falsely flagged as to-do when it's already done. SessionStart nudge + skill. Companion to waypoints; distinct from no-hidden-changes (which reconciles a rule once at first run).",
       "category": "productivity",
       "tags": ["skill", "hook", "sessions", "housekeeping", "records", "waypoints"]
+    },
+    {
+      "name": "run-to-completion",
+      "source": { "source": "url", "url": "https://github.com/haiggoh/run-to-completion.git" },
+      "description": "Offer continuous, autonomous execution for elaborate multi-step work: ask blocking matter-of-taste questions up front, then run the plan to completion without stopping between steps, folding in mid-run prompts at natural task seams. Does not relax destructive-action confirmations.",
+      "category": "productivity",
+      "tags": ["skill", "hook", "behavior", "autonomy", "planning", "execution", "workflow"]
     }
   ]
 }
