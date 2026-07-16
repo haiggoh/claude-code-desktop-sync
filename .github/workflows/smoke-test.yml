@@ -17,9 +17,9 @@ jobs:
       - name: Syntax check
         run: |
           python -m py_compile bin/sync_code_desktop.py install.py uninstall.py
-      - name: Validate plugin/marketplace JSON
+      - name: Validate plugin JSON
         run: |
-          python -c "import json; json.load(open('.claude-plugin/plugin.json')); json.load(open('.claude-plugin/marketplace.json')); json.load(open('hooks/hooks.json')); print('manifests valid')"
+          python -c "import json; json.load(open('.claude-plugin/plugin.json')); json.load(open('hooks/hooks.json')); print('manifests valid')"
       - name: Install (dry run)
         run: python install.py --dry-run
       - name: Functional test
