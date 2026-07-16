@@ -38,10 +38,12 @@ Runs automatically via a Claude Code **SessionStart hook**, and stays silent unl
 
 ### Option A — as a Claude Code plugin (recommended)
 
-This repo is a Claude Code plugin *and* its own single-plugin marketplace. From inside Claude Code:
+This repo is a Claude Code plugin, part of the `haiggoh` marketplace (catalog now hosted
+at [haiggoh/get-haiggoh](https://github.com/haiggoh/get-haiggoh), not here). From inside
+Claude Code:
 
 ```
-/plugin marketplace add haiggoh/claude-code-desktop-sync
+/plugin marketplace add haiggoh/get-haiggoh
 /plugin install claude-code-desktop-sync@haiggoh
 ```
 
