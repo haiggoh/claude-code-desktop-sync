@@ -1,0 +1,10 @@
+{
+  "_comment": "How rtc-ship.sh ships THIS repo (run-to-completion). Data here; commands in .rtc/*.sh, opt-in by presence. Config-only.",
+  "tag_prefix": "v",
+  "default_branch": "main",
+  "manifest": ".claude-plugin/plugin.json",
+  "changelog": "CHANGELOG.md",
+  "refresh_plugin": "claude-code-desktop-sync",
+  "test_cmd": "python3 tests/test_sync.py",
+  "require_default_branch_checkout": true
+}
