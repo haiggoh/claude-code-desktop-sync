@@ -226,14 +226,18 @@ def test_path_isolation(sb):
     tmp = Path(sb.env["CLAUDE_SYNC_HOME"]).parent
     fakebin = tmp / "bin"
     fakebin.mkdir(exist_ok=True)
-    tool = fakebin / "faketool"
+    # On Windows, shutil.which with X_OK only matches names whose extension is in
+    # PATHEXT (cmd.exe semantics — shutil.py win32 branch), so an extensionless
+    # file is never "executable" there (CI run 43322361462, windows-3.12).
+    launcher = "faketool.exe" if os.name == "nt" else "faketool"
+    tool = fakebin / launcher
     tool.write_text("#!/bin/sh\n", encoding="utf-8")
     tool.chmod(0o755)
-    write(sb.code, {"mcpServers": {"t": {"command": "faketool", "args": []}}})
+    write(sb.code, {"mcpServers": {"t": {"command": launcher, "args": []}}})
     write(sb.desk, {"mcpServers": {}})
     sb.run()
     check(read(sb.desk)["mcpServers"]["t"]["command"] == str(tool),
-          "path-isolation: 'faketool' resolved to the sandbox bin dir")
+          "path-isolation: %r resolved to the sandbox bin dir" % launcher)
 
 
 def main():
