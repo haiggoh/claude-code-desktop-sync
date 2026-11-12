@@ -37,10 +37,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     steps:
-      - uses: actions/checkout@v4
+      # @v7 majors target Node 24 natively — clears the Node-20 deprecation
+      # warning the @v4/@v5 majors triggered on current runners.
+      - uses: actions/checkout@v7
       - name: Set up Python (native jobs; the container job ships its own)
         if: ${{ matrix.setup_python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Syntax check

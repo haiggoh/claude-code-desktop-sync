@@ -17,10 +17,20 @@ REPO = Path(__file__).resolve().parent.parent.parent
 ENGINE = REPO / "bin" / "sync_code_desktop.py"
 
 # Env vars that would leak the real machine into a child process.
-LEAKY_ENV = ("HOME", "USERPROFILE", "PATH", "XDG_CONFIG_HOME", "APPDATA",
-             "LOCALAPPDATA", "PATHEXT", "ProgramFiles",
+# Windows stores some of these in mixed case ("Path", "UserProfile"), so the
+# filter below compares case-insensitively (k.upper()) — a case-sensitive
+# filter lets the real PATH/USERPROFILE survive alongside the sandbox ones.
+LEAKY_ENV = ("HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "PATH",
+             "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "PATHEXT",
+             "ProgramFiles",
              "CLAUDE_CODE_CONFIG", "CLAUDE_DESKTOP_CONFIG", "CLAUDE_SYNC_HOME",
              "PYTHONDONTWRITEBYTECODE")
+LEAKY_ENV_UPPER = frozenset(k.upper() for k in LEAKY_ENV)
+
+
+def clean_env():
+    """The real environment minus every leaky key, matched case-insensitively."""
+    return {k: v for k, v in os.environ.items() if k.upper() not in LEAKY_ENV_UPPER}
 
 # Env keys that must be pinned inside the test root before any launch.
 REQUIRED_ROOT_KEYS = ("HOME", "CLAUDE_CODE_CONFIG", "CLAUDE_DESKTOP_CONFIG",
@@ -44,6 +54,7 @@ def build_env(root):
     bindir.mkdir(exist_ok=True)
     return {
         "HOME": str(home),
+        "USERPROFILE": str(home),  # Windows ntpath.expanduser prefers USERPROFILE over HOME
         "PATH": os.pathsep.join([str(bindir), "/usr/bin", "/bin"]),
         "CLAUDE_CODE_CONFIG": str(root / "code.json"),
         "CLAUDE_DESKTOP_CONFIG": str(root / "desktop.json"),
@@ -74,7 +85,7 @@ def run_tool(argv, env, root, cwd=None, timeout=60):
     """Run argv under `env` — but only after require_root_override(env, root)
     passes. The child env is the real env minus LEAKY_ENV, plus `env`."""
     require_root_override(env, root)
-    clean = {k: v for k, v in os.environ.items() if k not in LEAKY_ENV}
+    clean = clean_env()
     clean.update(env)
     return subprocess.run([str(a) for a in argv], capture_output=True, text=True,
                           env=clean, cwd=str(cwd or root), timeout=timeout)

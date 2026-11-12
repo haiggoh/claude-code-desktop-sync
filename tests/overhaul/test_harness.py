@@ -5,17 +5,30 @@ Run: python3 -m unittest discover -s tests/overhaul -p 'test_*.py'
 """
 
 import json
+import os
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness
 
 
 class HarnessTests(unittest.TestCase):
+    def test_leaky_filter_is_case_insensitive(self):
+        # Windows stores PATH/USERPROFILE as "Path"/"UserProfile" — the filter
+        # must remove them regardless of case, or the real ones survive next to
+        # the sandbox copies and win in the child's env block.
+        with mock.patch.dict(os.environ, {"Path": "C:\\real\\bin",
+                                          "UserProfile": "C:\\real\\user",
+                                          "HOMEDRIVE": "C:"}, clear=False):
+            clean = harness.clean_env()
+            for key in clean:
+                self.assertNotIn(key.upper(), harness.LEAKY_ENV_UPPER, key)
+
     def test_build_env_is_rooted(self):
         with tempfile.TemporaryDirectory() as d:
             env = harness.build_env(d)

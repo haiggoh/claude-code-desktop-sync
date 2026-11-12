@@ -40,10 +40,13 @@ def read(p):
 
 # Env vars that would leak the real machine into the child engine: home/profile
 # (Path.home, config fallbacks), PATH (shutil.which), and platform config roots.
-_LEAKY_ENV = ("HOME", "USERPROFILE", "PATH", "XDG_CONFIG_HOME", "APPDATA",
-              "LOCALAPPDATA", "PATHEXT", "ProgramFiles",
+# Windows stores some of these in mixed case ("Path", "UserProfile"), so the
+# filter compares case-insensitively — see tests/overhaul for the regression test.
+_LEAKY_ENV = ("HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "PATH",
+              "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "PATHEXT", "ProgramFiles",
               "CLAUDE_CODE_CONFIG", "CLAUDE_DESKTOP_CONFIG", "CLAUDE_SYNC_HOME",
               "PYTHONDONTWRITEBYTECODE")
+_LEAKY_ENV_UPPER = frozenset(k.upper() for k in _LEAKY_ENV)
 
 
 class Sandbox:
@@ -52,6 +55,7 @@ class Sandbox:
         self.desk = Path(tmp) / "desktop.json"
         self.env = {
             "HOME": str(Path(tmp) / "home"),
+            "USERPROFILE": str(Path(tmp) / "home"),  # ntpath.expanduser prefers USERPROFILE on Windows
             "PATH": os.pathsep.join([str(Path(tmp) / "bin"), "/usr/bin", "/bin"]),
             "CLAUDE_CODE_CONFIG": str(self.code),
             "CLAUDE_DESKTOP_CONFIG": str(self.desk),
@@ -62,7 +66,7 @@ class Sandbox:
     def run(self):
         # Start from the real environment MINUS every leaky key, then overlay the
         # sandbox: the engine must never see the real HOME/PATH/config overrides.
-        env = {k: v for k, v in os.environ.items() if k not in _LEAKY_ENV}
+        env = {k: v for k, v in os.environ.items() if k.upper() not in _LEAKY_ENV_UPPER}
         env.update(self.env)
         r = subprocess.run([sys.executable, str(ENGINE)], capture_output=True, text=True,
                            env=env)
