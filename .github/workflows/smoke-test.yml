@@ -5,13 +5,42 @@ on: [push, pull_request]
 jobs:
   test:
     strategy:
+      # Independent matrix evidence: one job failing must not cancel the rest
+      # (the 2026-10-31 provisioning failure cancelled 5 working jobs).
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ["3.8", "3.12"]
+        include:
+          # Legacy runtime: setup-python has no 3.8 x64 manifest for
+          # ubuntu-latest (26.04), so the pinned container carries Python 3.8
+          # itself — provisioning-independent, 3.8 support kept (not dropped).
+          - name: legacy-3.8-container
+            os: ubuntu-latest
+            python: "3.8"
+            container: "python:3.8"
+            setup_python: false
+          - name: ubuntu-3.12
+            os: ubuntu-latest
+            python: "3.12"
+            setup_python: true
+          - name: ubuntu-3.14-latest-runtime
+            os: ubuntu-latest
+            python: "3.14"
+            setup_python: true
+          - name: macos-3.12
+            os: macos-latest
+            python: "3.12"
+            setup_python: true
+          - name: windows-3.12
+            os: windows-latest
+            python: "3.12"
+            setup_python: true
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up Python (native jobs; the container job ships its own)
+        if: ${{ matrix.setup_python }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       - name: Syntax check
@@ -22,5 +51,7 @@ jobs:
           python -c "import json; json.load(open('.claude-plugin/plugin.json')); json.load(open('hooks/hooks.json')); print('manifests valid')"
       - name: Install (dry run)
         run: python install.py --dry-run
-      - name: Functional test
+      - name: Functional test (legacy runner, fully isolated)
         run: python tests/test_sync.py
+      - name: Overhaul harness tests
+        run: python -m unittest discover -s tests/overhaul -p 'test_*.py'
