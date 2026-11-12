@@ -1,0 +1,14 @@
+{
+  "name": "claude-code-desktop-sync",
+  "displayName": "Claude Code ⇄ Desktop Sync",
+  "version": "1.0.3",
+  "description": "Two-way syncs stdio MCP servers between Claude Code and Claude Desktop at session start, rewriting launchers like npx to absolute paths for Desktop. HTTP or header-auth servers that cannot live in Desktop's config are reported with the exact manual step. One-sided changes propagate; conflicts are held and reported, never overwritten. Backs up before writing; a bundled skill offers on-demand sync.",
+  "author": {
+    "name": "Heiko Brantsch",
+    "url": "https://github.com/haiggoh"
+  },
+  "homepage": "https://github.com/haiggoh/claude-code-desktop-sync",
+  "repository": "https://github.com/haiggoh/claude-code-desktop-sync",
+  "license": "MIT",
+  "keywords": ["mcp", "sync", "claude-desktop", "hooks", "configuration"]
+}

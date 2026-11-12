@@ -12,3 +12,6 @@ backups/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated portable distribution zip (portable/ itself IS committed)
+dist/
