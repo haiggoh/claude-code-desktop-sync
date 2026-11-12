@@ -86,7 +86,8 @@ class HarnessTests(unittest.TestCase):
             harness.run_engine(env, d)
             changed = harness.changed_files(d, before)
             self.assertTrue(changed, "expected the state file to be written")
-            self.assertTrue(all(c.startswith("sync" + "/") for c in changed),
+            # Path parts, not a "/" prefix — Windows relpaths use backslashes
+            self.assertTrue(all(Path(c).parts[0] == "sync" for c in changed),
                             "writes outside the sync home: %s" % sorted(changed))
 
 
