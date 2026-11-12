@@ -57,3 +57,5 @@ jobs:
         run: python tests/test_sync.py
       - name: Overhaul harness tests
         run: python -m unittest discover -s tests/overhaul -p 'test_*.py'
+      - name: Portable package freshness
+        run: python scripts/build-portable.py --check
