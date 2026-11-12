@@ -38,19 +38,34 @@ def read(p):
     return json.loads(Path(p).read_text(encoding="utf-8"))
 
 
+# Env vars that would leak the real machine into the child engine: home/profile
+# (Path.home, config fallbacks), PATH (shutil.which), and platform config roots.
+_LEAKY_ENV = ("HOME", "USERPROFILE", "PATH", "XDG_CONFIG_HOME", "APPDATA",
+              "LOCALAPPDATA", "PATHEXT", "ProgramFiles",
+              "CLAUDE_CODE_CONFIG", "CLAUDE_DESKTOP_CONFIG", "CLAUDE_SYNC_HOME",
+              "PYTHONDONTWRITEBYTECODE")
+
+
 class Sandbox:
     def __init__(self, tmp):
         self.code = Path(tmp) / "code.json"
         self.desk = Path(tmp) / "desktop.json"
         self.env = {
+            "HOME": str(Path(tmp) / "home"),
+            "PATH": os.pathsep.join([str(Path(tmp) / "bin"), "/usr/bin", "/bin"]),
             "CLAUDE_CODE_CONFIG": str(self.code),
             "CLAUDE_DESKTOP_CONFIG": str(self.desk),
             "CLAUDE_SYNC_HOME": str(Path(tmp) / "sync"),
+            "PYTHONDONTWRITEBYTECODE": "1",
         }
 
     def run(self):
+        # Start from the real environment MINUS every leaky key, then overlay the
+        # sandbox: the engine must never see the real HOME/PATH/config overrides.
+        env = {k: v for k, v in os.environ.items() if k not in _LEAKY_ENV}
+        env.update(self.env)
         r = subprocess.run([sys.executable, str(ENGINE)], capture_output=True, text=True,
-                           env=dict(os.environ, **self.env))
+                           env=env)
         return (r.stdout + r.stderr).strip()
 
 
@@ -189,10 +204,39 @@ def test_bom_tolerant(sb):
     check("z" in read(sb.desk)["mcpServers"], "bom: server still synced despite BOM")
 
 
+def test_home_isolation(sb):
+    print("\n[HOME isolation: the engine's skills snapshot must come from the sandbox HOME only]")
+    tmp = Path(sb.env["CLAUDE_SYNC_HOME"]).parent
+    fake_home = tmp / "home"
+    (fake_home / ".claude" / "skills" / "sentinel-skill").mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {}})
+    write(sb.desk, {"mcpServers": {}})
+    sb.run()
+    state = read(Path(sb.env["CLAUDE_SYNC_HOME"]) / "last-sync-state.json")
+    check(state.get("skills") == ["sentinel-skill"],
+          "home-isolation: snapshot skills == fake-HOME skills only (real HOME not read)")
+
+
+def test_path_isolation(sb):
+    print("\n[PATH isolation: a launcher must resolve via the sandbox PATH, not the real one]")
+    tmp = Path(sb.env["CLAUDE_SYNC_HOME"]).parent
+    fakebin = tmp / "bin"
+    fakebin.mkdir(exist_ok=True)
+    tool = fakebin / "faketool"
+    tool.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool.chmod(0o755)
+    write(sb.code, {"mcpServers": {"t": {"command": "faketool", "args": []}}})
+    write(sb.desk, {"mcpServers": {}})
+    sb.run()
+    check(read(sb.desk)["mcpServers"]["t"]["command"] == str(tool),
+          "path-isolation: 'faketool' resolved to the sandbox bin dir")
+
+
 def main():
     for fn in (test_push_pull_remove, test_first_run_clash, test_two_sided_conflict,
                test_command_change_detected, test_remote_in_desktop, test_malformed_mcpservers,
-               test_same_relative_launcher, test_type_conflict_preserves_connector, test_bom_tolerant):
+               test_same_relative_launcher, test_type_conflict_preserves_connector, test_bom_tolerant,
+               test_home_isolation, test_path_isolation):
         scenario(fn)
     print()
     if failures:
