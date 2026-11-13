@@ -109,8 +109,8 @@ class BuilderTests(unittest.TestCase):
             builder.check_duplicate_names(["Data.txt", "data.txt"])
         self.assertIn("duplicate", str(cm.exception).lower())
         with tempfile.TemporaryDirectory() as d:
-            src = make_legacy_plugin(d, with_dup=True)
-            builder.build(src, Path(d) / "out")  # must not raise on a normal tree
+            src = make_legacy_plugin(d)  # no dup — a normal tree must not raise
+            builder.build(src, Path(d) / "out")
 
     def test_symlink_escape_refused(self):
         with tempfile.TemporaryDirectory() as d:
