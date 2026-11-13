@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.1
+
+### Fixed — bare `desktop-sync` in a terminal showed nothing and looked dead (user report 2026-11-13)
+- The plain menu printed through bare `stdout.write`: no newline per line and no flush, so the
+  title, the options and the prompt sat unseen in the terminal's line buffer while the menu
+  waited for input; on the first keypress it dumped as one run-on line. Every menu line now ends
+  with a newline and is flushed, and every read flushes first.
+- Why tests stayed green: the menu test passed a discarding `print_fn`, so what the menu SHOWS was
+  never asserted. New delivery-level test runs the real `bin/desktop-sync` on a PTY and requires
+  the title and each option on its own line BEFORE any input (macOS/Linux; mutation-checked).
+- `portable/` rebuilt (it carries its own `core/`).
+
 ## 2.0.0
 
 **v2 overhaul (2026-11-13).** A compatibility/reconciliation product on top of the unchanged legacy

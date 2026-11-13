@@ -320,6 +320,19 @@ def cmd_menu(args, env, stdout, stderr, stdin=None):
     spec = menu_mod.build_spec()
     ran = []
 
+    # 2.0.1 (user report 2026-11-13): run_plain_menu calls print_fn like print() — one line per
+    # call, no "\n" — and the menu then blocks in readline(). Passing bare stdout.write left the
+    # whole menu unflushed in the terminal's line buffer: the window looked dead, and on input it
+    # dumped as one run-on line. Every menu line ends with a newline and is flushed, and every
+    # read flushes first, so nothing the user must see can sit buffered while we wait for them.
+    def say(text):
+        stdout.write(text + "\n")
+        stdout.flush()
+
+    def readline():
+        stdout.flush()
+        return stdin.readline()
+
     def run_action(action):
         # M2 (review): the menu MUST ask the spec's prompts before running —
         # placeholders never pass through literally into an effectful command
@@ -332,7 +345,7 @@ def cmd_menu(args, env, stdout, stderr, stdin=None):
                 default = pr.get("default")
                 ans = None
                 while ans is None:
-                    line = stdin.readline()
+                    line = readline()
                     if line == "":
                         raise EOFError
                     line = line.strip()
@@ -345,14 +358,14 @@ def cmd_menu(args, env, stdout, stderr, stdin=None):
                 answers[pr["id"]] = ans
             elif pr.get("type") == "confirm":
                 default = pr.get("default") or ""
-                line = stdin.readline()
+                line = readline()
                 if line == "":
                     raise EOFError
                 ans = line.strip().lower()
                 answers[pr["id"]] = default if ans == "" else ("--yes" if ans in ("y", "yes") else "--no")
             else:
                 stdout.write("  %s " % pr.get("question", pr["id"]))
-                line = stdin.readline()
+                line = readline()
                 if line == "":
                     raise EOFError
                 answers[pr["id"]] = line.rstrip("\n") or (pr.get("default") or "")
@@ -361,10 +374,10 @@ def cmd_menu(args, env, stdout, stderr, stdin=None):
         ran.append((action["label"], rc))
 
     def input_fn():
-        line = stdin.readline()
+        line = readline()
         if line == "":
             raise EOFError
         return line.rstrip("\n")
 
-    menu_mod.run_plain_menu(spec, input_fn, stdout.write, run_action)
+    menu_mod.run_plain_menu(spec, input_fn, say, run_action)
     return exitcodes.EXIT_OK

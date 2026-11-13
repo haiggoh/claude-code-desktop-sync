@@ -53,6 +53,54 @@ class CLITests(unittest.TestCase):
             self.assertEqual(r.returncode, 2)
             self.assertIn("terminal", (r.stderr + r.stdout).lower())
 
+    @unittest.skipUnless(sys.platform != "win32", "pty is POSIX-only; macOS/Linux CI jobs run this")
+    def test_bare_tty_menu_is_visible_before_any_input(self):
+        # 2.0.1 (user report 2026-11-13): bare `desktop-sync` in Terminal showed NOTHING and
+        # looked dead — print_fn was stdout.write (no newline, no flush), so the whole menu sat
+        # in the line buffer while readline() blocked; on `q` it dumped as one run-on line. The
+        # old menu test passed `lambda t: None` as print_fn, so output was never checked.
+        import os
+        import pty
+        import select
+        import time
+        with tempfile.TemporaryDirectory() as d:
+            before = harness.tree_snapshot(d)
+            m, s = pty.openpty()
+            p = subprocess.Popen([sys.executable, str(ENTRY)], stdin=s, stdout=s, stderr=s,
+                                 env=dict(harness.build_env(d)), cwd=d, start_new_session=True)
+            os.close(s)
+
+            def read_for(secs):
+                out, end = b"", time.time() + secs
+                while time.time() < end:
+                    r, _, _ = select.select([m], [], [], 0.1)
+                    if r:
+                        try:
+                            out += os.read(m, 65536)
+                        except OSError:
+                            break
+                    if b"Choose [" in out:
+                        break
+                return out.decode("utf-8", "replace")
+
+            try:
+                shown = read_for(5.0)
+                self.assertIsNone(p.poll(), "menu must be waiting for input, not exited")
+                spec = menu_mod.build_spec()
+                self.assertIn(spec["title"], shown, "title must be visible BEFORE any input")
+                lines = [ln.strip() for ln in shown.replace("\r", "").split("\n")]
+                for i, a in enumerate(spec["actions"], 1):
+                    self.assertIn("%d) %s" % (i, a["label"]), lines,
+                                  "each option on its own line, visible before input: %r" % shown[:300])
+                self.assertIn("q) Quit", lines)
+                os.write(m, b"q\n")
+                self.assertEqual(p.wait(timeout=10), 0)
+            finally:
+                if p.poll() is None:
+                    p.kill()
+                os.close(m)
+            self.assertEqual(harness.changed_files(d, before), set(), "menu + quit writes nothing")
+
     def test_subcommand_json_agrees_with_human(self):
         with tempfile.TemporaryDirectory() as d:
             rj = run_cli(["status", "--json"], d)
