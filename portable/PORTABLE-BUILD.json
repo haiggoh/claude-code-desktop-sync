@@ -1,7 +1,7 @@
 {
   "schema": "haiggoh-portable-build/1",
   "source_repo": "https://github.com/haiggoh/claude-code-desktop-sync",
-  "source_commit": "34211a5566bcffb2184303a1a63930aa258377c1",
+  "source_commit": "d85f8a035190f6fd5bab66d934ba4b6fde0b72c4",
   "builder": "scripts/build-portable.py",
   "builder_version": "1.4.0",
   "transform_version": "1",

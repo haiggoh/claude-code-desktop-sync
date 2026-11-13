@@ -15,6 +15,9 @@ COORDINATION §6 entry was needed.
 
 Freshness is enforced: `python3 scripts/build-portable.py --check` exits 1 when
 the committed `portable/` differs from a fresh build; CI runs `--check`.
+**Rebuild `portable/` in the SAME commit that changes any copied source**
+(manifest, hooks, skill, engine, core/, docs, README, CHANGELOG, LICENSE) —
+`--check` fails otherwise, so a commit that forgets the rebuild goes red in CI.
 
 ## Source → host → portable → installer → hook → skill → test → shortcut map
 
