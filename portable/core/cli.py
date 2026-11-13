@@ -41,6 +41,8 @@ Commands (never open the menu):
   mcp [--preview]            legacy-MCP sync (env-overridden configs in tests)
   menu [--plain]             the dependency-free numbered menu (TTY)
   menu-spec                  pure menu-spec v1 JSON on stdout
+  --menu-spec                same as menu-spec (the get-haiggoh family probe)
+  --return-to get-haiggoh    open the menu with "Back to Get Haiggoh" as the last item
   --help                     this text
 
 Environment variables read: HOME (claude home), CLAUDE_CODE_CONFIG /
@@ -284,9 +286,22 @@ def main(argv, stdin=None, stdout=None, stderr=None, env=None):
     if "--help" in argv or "-h" in argv or argv == ["help"]:
         stdout.write(USAGE)
         return exitcodes.EXIT_OK
+    # 2.0.1 — get-haiggoh family contract (get-haiggoh docs/menu-spec.md): the consumer probes
+    # `<argv> --menu-spec` (a FLAG) and launches menus with `--return-to get-haiggoh`. 2.0.0
+    # only had the `menu-spec` SUBCOMMAND, so the probe got "unknown command" (rc 2).
+    return_to = None
+    if "--return-to" in argv:
+        i = argv.index("--return-to")
+        if i + 1 >= len(argv) or argv[i + 1] != "get-haiggoh":
+            stderr.write("desktop-sync: --return-to accepts only 'get-haiggoh'\n")
+            return exitcodes.EXIT_INVALID
+        return_to = argv[i + 1]
+        del argv[i:i + 2]
+    if argv == ["--menu-spec"]:
+        argv = ["menu-spec"]
     if not argv:
         if stdin.isatty():
-            return cmd_menu(["--plain"], env, stdout, stderr, stdin=stdin)
+            return cmd_menu(["--plain"], env, stdout, stderr, stdin=stdin, return_to=return_to)
         stderr.write("desktop-sync: the menu is interactive and needs a terminal. "
                      "Try: desktop-sync status | doctor | plan | build | apply | verify "
                      "| recover | menu-spec | --help\n")
@@ -302,7 +317,7 @@ def main(argv, stdin=None, stdout=None, stderr=None, env=None):
         stdout.write(json.dumps(spec, indent=2, ensure_ascii=True) + "\n")
         return exitcodes.EXIT_OK
     if argv[0] == "menu":
-        return cmd_menu(argv[1:], env, stdout, stderr, stdin=stdin)
+        return cmd_menu(argv[1:], env, stdout, stderr, stdin=stdin, return_to=return_to)
     if argv[0] == "exit":
         return exitcodes.EXIT_OK
     cmd = _COMMANDS.get(argv[0])
@@ -316,7 +331,7 @@ def main(argv, stdin=None, stdout=None, stderr=None, env=None):
         return exitcodes.EXIT_FAILURE
 
 
-def cmd_menu(args, env, stdout, stderr, stdin=None):
+def cmd_menu(args, env, stdout, stderr, stdin=None, return_to=None):
     spec = menu_mod.build_spec()
     ran = []
 
@@ -379,5 +394,6 @@ def cmd_menu(args, env, stdout, stderr, stdin=None):
             raise EOFError
         return line.rstrip("\n")
 
-    menu_mod.run_plain_menu(spec, input_fn, say, run_action)
+    menu_mod.run_plain_menu(spec, input_fn, say, run_action,
+                            back_label=menu_mod.BACK_TO_GET_HAIGGOH if return_to else None)
     return exitcodes.EXIT_OK

@@ -144,20 +144,29 @@ def build_spec():
     }
 
 
-def run_plain_menu(spec, input_fn, print_fn, run_action_fn):
+BACK_TO_GET_HAIGGOH = "👨🏻‍💻 Back to Get Haiggoh"
+
+
+def run_plain_menu(spec, input_fn, print_fn, run_action_fn, back_label=None):
     """The mandatory dependency-free numbered menu.
 
     input_fn() -> raw input line (raises EOFError at end); print_fn(text);
     run_action_fn(action) executes the chosen action via the SAME CLI handlers.
     Blank Enter runs the FIRST action (read-only preview default). 'q' exits.
+    back_label (2.0.1, get-haiggoh menu-spec contract): when launched with
+    `--return-to get-haiggoh`, an extra LAST numbered item that just returns to the parent.
     Returns the number of actions run."""
     actions = spec["actions"]
     print_fn(spec["title"])
     print_fn("=" * 60)
     for i, a in enumerate(actions, 1):
         print_fn("  %d) %s" % (i, a["label"]))
+    last = len(actions)
+    if back_label:
+        last += 1
+        print_fn("  %d) %s" % (last, back_label))
     print_fn("  q) Quit")
-    print_fn("Choose [1-%d, blank=preview, q=quit]: " % len(actions))
+    print_fn("Choose [1-%d, blank=preview, q=quit]: " % last)
     ran = 0
     while True:
         try:
@@ -172,6 +181,8 @@ def run_plain_menu(spec, input_fn, print_fn, run_action_fn):
             run_action_fn(actions[0])  # blank Enter = read-only preview default
             ran += 1
             continue
+        if back_label and line.isdigit() and int(line) == last:
+            return ran  # back to the parent (get-haiggoh): no action runs
         if not line.isdigit() or not (1 <= int(line) <= len(actions)):
             print_fn("invalid choice %r — nothing applied" % line)
             continue

@@ -12,6 +12,17 @@
   the title and each option on its own line BEFORE any input (macOS/Linux; mutation-checked).
 - `portable/` rebuilt (it carries its own `core/`).
 
+### Added — get-haiggoh family contract (get-haiggoh `docs/menu-spec.md`)
+- `desktop-sync --menu-spec` (the FLAG the consumer probes) returns the same pure menu-spec v1
+  JSON as the `menu-spec` subcommand. 2.0.0 only had the subcommand, so get-haiggoh's probe got
+  `unknown command` (rc 2) and could not show the menu.
+- `desktop-sync --return-to get-haiggoh` opens the menu with `👨🏻‍💻 Back to Get Haiggoh` as the
+  LAST item (absent when launched standalone); choosing it returns to get-haiggoh, running
+  nothing. Any other `--return-to` value exits 2.
+- Contract test validates our spec with get-haiggoh's OWN `menuspec.validate` (skips loudly when
+  no get-haiggoh source is present, e.g. CI; `GET_HAIGGOH_SRC` points at one). Both new tests
+  mutation-checked.
+
 ## 2.0.0
 
 **v2 overhaul (2026-11-13).** A compatibility/reconciliation product on top of the unchanged legacy

@@ -9,6 +9,7 @@ Run: python3 -m unittest discover -s tests/overhaul -p 'test_*.py'
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -227,6 +228,58 @@ class PlainMenuTests(unittest.TestCase):
             r = run_cli(["menu", "--plain"], d, stdin_text="999\nq\n")
             self.assertEqual(harness.changed_files(d, before), set())
             self.assertIn("invalid", (r.stdout + r.stderr).lower())
+
+
+GET_HAIGGOH_SRC = Path(os.environ.get("GET_HAIGGOH_SRC",
+                                      str(Path.home() / "ClaudeWorkspace" / "get-haiggoh")))
+
+
+class GetHaiggohContract(unittest.TestCase):
+    """2.0.1: get-haiggoh (docs/menu-spec.md) probes `<argv> --menu-spec` (a FLAG) and opens
+    menus with `--return-to get-haiggoh`. 2.0.0 had only the `menu-spec` SUBCOMMAND, so the
+    consumer's probe got rc 2 'unknown command' — the producer-side tests never asked the
+    consumer."""
+
+    def test_menu_spec_flag_equals_subcommand(self):
+        with tempfile.TemporaryDirectory() as d:
+            flag, sub = run_cli(["--menu-spec"], d), run_cli(["menu-spec"], d)
+            self.assertEqual(flag.returncode, 0, flag.stderr)
+            self.assertEqual(json.loads(flag.stdout), json.loads(sub.stdout))
+
+    def test_real_consumer_validator_accepts_our_spec(self):
+        # Validate with get-haiggoh's OWN validator, not ours. Skips loudly (reason printed)
+        # where no get-haiggoh source exists, e.g. CI; set GET_HAIGGOH_SRC to point at one.
+        if not (GET_HAIGGOH_SRC / "get_haiggoh_tui" / "menuspec.py").is_file():
+            self.skipTest("get-haiggoh source not found at %s (set GET_HAIGGOH_SRC)" % GET_HAIGGOH_SRC)
+        sys.path.insert(0, str(GET_HAIGGOH_SRC))
+        try:
+            from get_haiggoh_tui import menuspec as consumer
+        finally:
+            sys.path.remove(str(GET_HAIGGOH_SRC))
+        with tempfile.TemporaryDirectory() as d:
+            r = run_cli(["--menu-spec"], d)
+        self.assertEqual(consumer.validate(json.loads(r.stdout)), [])
+
+    def test_return_to_rejects_unknown_parent(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(run_cli(["--return-to", "elsewhere"], d).returncode, 2)
+            self.assertEqual(run_cli(["--return-to"], d).returncode, 2)
+
+    def test_back_item_is_last_and_runs_nothing(self):
+        spec = menu_mod.build_spec()
+        shown, ran = [], []
+        answers = iter([str(len(spec["actions"]) + 1)])
+        n = menu_mod.run_plain_menu(spec, lambda: next(answers), shown.append, ran.append,
+                                    back_label=menu_mod.BACK_TO_GET_HAIGGOH)
+        self.assertEqual((n, ran), (0, []))
+        options = [s for s in shown if s.strip()[:1].isdigit()]
+        self.assertTrue(options[-1].endswith(menu_mod.BACK_TO_GET_HAIGGOH), options[-1])
+
+    def test_back_item_absent_when_standalone(self):
+        spec = menu_mod.build_spec()
+        shown = []
+        menu_mod.run_plain_menu(spec, lambda: "q", shown.append, lambda a: None)
+        self.assertFalse(any(menu_mod.BACK_TO_GET_HAIGGOH in s for s in shown))
 
 
 if __name__ == "__main__":
