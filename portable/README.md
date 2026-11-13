@@ -131,6 +131,15 @@ python3 uninstall.py --purge   # also delete ~/.claude/desktop-sync
 See [`docs/SYNC-REFERENCE.md`](docs/SYNC-REFERENCE.md) for config locations, the full sync matrix,
 conflict rules, and the backup/restore procedure.
 
+## v2 overhaul (unreleased, branch `feat/v2-overhaul`)
+
+The plugin is growing into a compatibility/reconciliation product: a read-only inventory, a pure
+planner, a deterministic builder for legacy/offline plugins, a hardened MCP reconciler, selected
+records, a numbered menu + `menu-spec` v1, and a bundled window driver — all stdlib, all behind
+the `desktop-sync` CLI (`bin/desktop-sync`). See [`docs/V2-OVERVIEW.md`](docs/V2-OVERVIEW.md) and
+[`docs/PACKAGE-MAP.md`](docs/PACKAGE-MAP.md). The legacy engine, installer, hook, and skill name
+are unchanged.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

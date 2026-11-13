@@ -5,6 +5,6 @@
   "manifest": ".claude-plugin/plugin.json",
   "changelog": "CHANGELOG.md",
   "refresh_plugin": "claude-code-desktop-sync",
-  "test_cmd": "python3 tests/test_sync.py",
+  "test_cmd": "python3 tests/test_sync.py && python3 -m unittest discover -s tests/overhaul -p 'test_*.py'",
   "require_default_branch_checkout": true
 }

@@ -54,6 +54,23 @@ Phase 1 of the v2 overhaul (branch `feat/v2-overhaul`; not released):
   freshness negative control proven (mutated file → `--check` exit 1 → rebuild
   → exit 0, byte-identical).
 
+### Phases 6–13 (same unreleased branch)
+- `core/capability.py` (evidence levels per surface; runtime-qualified requires a live receipt),
+  `core/distribution.py` + `core/coexistence.py` (artifact readiness, pending account steps,
+  active-version verify, same-name shadowed / distinct-name double-run refused),
+  `core/lifecycle.py` (owned locks, verified backups, 0600 temps, journal, recovery),
+  `core/records.py` (allowlisted records, revision-protected proposals, tombstones, offline
+  never deletes), `core/mcp.py` (hardened v2 MCP sync — edit/delete conflict fixed, typed
+  snapshot, partial-journal), `core/menu.py` + `core/cli.py` + `bin/desktop-sync` (numbered
+  menu, pure menu-spec v1, exit codes 0–5), `core/windowdriver.py` (bundled nonprivileged
+  Terminal.app launcher, per-launch receipts — runtime-qualified on darwin 2026-11-13),
+  skill rewired to the v2 CLI with a single resolved route (no stderr-suppression fallback),
+  portable package now carries `core/` + the skill-invoked CLI entry.
+- Phase 12: full offline journeys chained end-to-end (111 overhaul tests + legacy runner green).
+- Docs: `docs/V2-OVERVIEW.md`, `docs/PACKAGE-MAP.md`, link-integrity test.
+- `rtc-ship.json` test_cmd now runs both suites. Nothing is released; version bump happens
+  only at an authorized ship.
+
 ## 1.0.3
 
 ### Changed
