@@ -28,6 +28,32 @@ Phase 1 of the v2 overhaul (branch `feat/v2-overhaul`; not released):
 - Actions bumped to the `@v7` majors (Node 24 native), clearing the Node-20
   deprecation warning the `@v4`/`@v5` majors triggered.
 
+### Added (Phase 2 — packaging boundary, C1 Option B)
+- `scripts/build-portable.py`: deterministic stdlib builder for the committed
+  `portable/` package (same manifest name, no top-level `bin/`, hook scripts in
+  `scripts/`, skill scripts in `skills/<s>/scripts/`, copies never symlinks),
+  the `dist/<name>-portable.zip` artifact (gitignored, manifest at zip root,
+  byte-deterministic), and `portable/PORTABLE-BUILD.json`
+  (schema `haiggoh-portable-build/1`). `--check` verifies freshness; `--help`
+  and unknown-flag exit codes tested. `--source-commit` keeps the builder
+  git-free in sandboxes; `source_commit` is masked in freshness comparisons
+  (it is always the parent commit) but verified against repo history when git
+  is available.
+- `.gitattributes` (`* text=auto eol=lf`, `*.zip -text`): checkouts are
+  byte-identical on every platform so portable hashes match (Windows CI
+  autocrlf would otherwise break them).
+- `core/hostguard.py`: host-management writes require a verified multi-signal
+  grant (code-session + plugin-root + desktop platform + TTY + existing
+  `~/.claude.json`); cloud lookalikes, missing files, forged grants, and
+  outside-root targets are all refused (mutation-tested).
+- `core/automodes.py`: frozen auto-action modes (plan §5.8).
+- `docs/PACKAGE-MAP.md`: source→host→portable→installer→hook→skill→test→shortcut
+  map, entry-point contract, boundary rules, component verdicts.
+- CI runs `scripts/build-portable.py --check` in every matrix job.
+- Tests: `tests/overhaul/` now 20 tests (harness, hostguard, portable builder);
+  freshness negative control proven (mutated file → `--check` exit 1 → rebuild
+  → exit 0, byte-identical).
+
 ## 1.0.3
 
 ### Changed

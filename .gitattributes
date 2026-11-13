@@ -1,0 +1,4 @@
+# Checkouts must be byte-identical on every platform: the portable builder hashes
+# file bytes, and Windows CI checkouts with autocrlf would otherwise change them.
+* text=auto eol=lf
+*.zip -text

@@ -7,6 +7,7 @@ Run: python3 -m unittest discover -s tests/overhaul -p 'test_*.py'
 
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,8 +25,22 @@ ADAPTATION_CLASSES = ("native-unchanged", "mechanical", "qualified-adapter",
 EVIDENCE_LEVELS = ("source-inspected", "fixture-tested", "runtime-qualified")
 
 
+def _head():
+    """Current HEAD, resolved in the TEST process (real env) so the sandboxed
+    builder child never needs git on its restricted PATH (Windows)."""
+    try:
+        r = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except OSError:
+        pass
+    return "test-commit"
+
+
 def run_builder(args, root):
-    return harness.run_tool([sys.executable, str(BUILDER)] + args,
+    # --source-commit keeps the builder git-free inside the sandbox (Win CI).
+    return harness.run_tool([sys.executable, str(BUILDER), "--source-commit", _head()] + args,
                             harness.build_env(root), root, cwd=REPO)
 
 
@@ -80,21 +95,25 @@ class PortableLayoutTests(unittest.TestCase):
             self.assertEqual(set(c["surfaces"].keys()), {"chat", "cowork", "code"})
 
     def test_zip_rooted_safe_and_deterministic(self):
-        zips = sorted((REPO / "dist").glob("*-portable.zip"))
-        self.assertEqual(len(zips), 1, "exactly one dist zip expected (gitignored)")
-        names = zipfile.ZipFile(zips[0]).namelist()
-        self.assertIn(".claude-plugin/plugin.json", names, "manifest at zip root (fact 6)")
-        self.assertFalse(any(n == "bin" or n.startswith("bin/") for n in names))
-        self.assertFalse(any(n.startswith("/") or ".." in n.split("/") for n in names))
+        # dist/ is gitignored, so a fresh CI checkout has no zip — build into
+        # temp dirs and assert on those; separately assert dist/ IS ignored.
         with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
             blobs = []
             for d in (d1, d2):
                 r = run_builder(["--out", str(Path(d) / "portable"),
                                  "--dist", str(Path(d) / "dist")], d)
                 self.assertEqual(r.returncode, 0, r.stderr)
-                blob = next((Path(d) / "dist").glob("*-portable.zip")).read_bytes()
-                blobs.append(blob)
+                zips = list((Path(d) / "dist").glob("*-portable.zip"))
+                self.assertEqual(len(zips), 1)
+                names = zipfile.ZipFile(zips[0]).namelist()
+                self.assertIn(".claude-plugin/plugin.json", names, "manifest at zip root (fact 6)")
+                self.assertFalse(any(n == "bin" or n.startswith("bin/") for n in names))
+                self.assertFalse(any(n.startswith("/") or ".." in n.split("/") for n in names))
+                blobs.append(zips[0].read_bytes())
             self.assertEqual(blobs[0], blobs[1], "zip must be byte-deterministic across rebuilds")
+        r = subprocess.run(["git", "-C", str(REPO), "check-ignore", "dist"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, "dist/ must be gitignored")
 
 
 if __name__ == "__main__":

@@ -29,6 +29,8 @@ Stdlib only; Python 3.8 compatible.
 import argparse
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,7 +40,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SCHEMA = "haiggoh-portable-build/1"
 BUILDER = "scripts/build-portable.py"
-BUILDER_VERSION = "1.0.0"
+BUILDER_VERSION = "1.1.0"
 TRANSFORM_VERSION = "1"
 SOURCE_REPO = "https://github.com/haiggoh/claude-code-desktop-sync"
 
@@ -116,19 +118,34 @@ def sha256_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def source_commit():
-    r = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        raise SystemExit("build-portable: not a git checkout (%s)" % r.stderr.strip())
-    return r.stdout.strip()
+def source_commit(explicit=None):
+    """The commit the portable tree was built from.
+
+    Explicit flag wins (tests run the builder under a restricted PATH where git
+    may not exist, e.g. Windows sandboxes). Otherwise git rev-parse HEAD; if git
+    is unavailable, fall back to CDS_SOURCE_COMMIT, else "unknown" with a
+    stderr warning (never crash the build over a provenance lookup).
+    """
+    if explicit:
+        return explicit
+    git = shutil.which("git")
+    if git:
+        r = subprocess.run([git, "-C", str(REPO), "rev-parse", "HEAD"],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            return r.stdout.strip()
+    env_val = os.environ.get("CDS_SOURCE_COMMIT")
+    if env_val:
+        return env_val
+    print("build-portable: warning: git not found and CDS_SOURCE_COMMIT unset; "
+          "recording source_commit as 'unknown'", file=sys.stderr)
+    return "unknown"
 
 
-def build(out_dir, make_zip=True, dist_dir=None):
+def build(out_dir, make_zip=True, dist_dir=None, commit=None):
     """Generate the portable tree under out_dir. Returns the file map."""
     out = Path(out_dir)
     if out.exists():
-        import shutil
         shutil.rmtree(out)
     files = {}
     for dest, src in COPIES:
@@ -152,7 +169,7 @@ def build(out_dir, make_zip=True, dist_dir=None):
     build_meta = {
         "schema": SCHEMA,
         "source_repo": SOURCE_REPO,
-        "source_commit": source_commit(),
+        "source_commit": source_commit(commit),
         "builder": BUILDER,
         "builder_version": BUILDER_VERSION,
         "transform_version": TRANSFORM_VERSION,
@@ -188,10 +205,24 @@ def _tree(root):
     return out
 
 
-def check():
-    """Rebuild into a temp dir and compare byte-for-byte with committed portable/."""
+def _mask_commit(meta_bytes):
+    """PORTABLE-BUILD.json records the commit the tree was built FROM, which
+    legitimately differs from the commit carrying the file (it is always the
+    parent). Freshness compares CONTENT, so mask source_commit before comparing."""
+    meta = json.loads(meta_bytes.decode("utf-8"))
+    meta["source_commit"] = "<commit>"
+    return json.dumps(meta, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def check(commit=None):
+    """Rebuild into a temp dir and compare with committed portable/.
+
+    All files are compared byte-for-byte except PORTABLE-BUILD.json, whose
+    source_commit is masked (see _mask_commit). When git is available, the
+    recorded source_commit must also exist in this repo's history.
+    """
     with tempfile.TemporaryDirectory() as tmp:
-        build(Path(tmp) / "portable", make_zip=False)
+        build(Path(tmp) / "portable", make_zip=False, commit=commit)
         fresh = _tree(Path(tmp) / "portable")
     committed = _tree(REPO / "portable")
     if committed is None:
@@ -203,8 +234,19 @@ def check():
             problems.append("extra in fresh build: %s" % rel)
         elif rel not in fresh:
             problems.append("missing in fresh build (stale): %s" % rel)
+        elif rel == "PORTABLE-BUILD.json":
+            if _mask_commit(fresh[rel]) != _mask_commit(committed[rel]):
+                problems.append("differs (besides source_commit): %s" % rel)
         elif fresh[rel] != committed[rel]:
             problems.append("differs: %s" % rel)
+    # provenance: the recorded source_commit must be a real commit of this repo
+    recorded = json.loads(committed["PORTABLE-BUILD.json"].decode("utf-8")).get("source_commit", "")
+    git = shutil.which("git")
+    if git and recorded and recorded != "unknown":
+        r = subprocess.run([git, "-C", str(REPO), "cat-file", "-e", recorded + "^{commit}"],
+                           capture_output=True)
+        if r.returncode != 0:
+            problems.append("PORTABLE-BUILD.json source_commit %s not found in repo history" % recorded)
     if problems:
         print("STALE: committed portable/ differs from a fresh build:")
         for p in problems:
@@ -226,12 +268,16 @@ def main(argv):
     ap.add_argument("--out", default=None, help="output dir for the portable tree (default: <repo>/portable)")
     ap.add_argument("--dist", default=None, help="dir for the zip (default: <repo>/dist); zip written unless --no-zip")
     ap.add_argument("--no-zip", action="store_true", help="do not write dist zip")
+    ap.add_argument("--source-commit", default=None,
+                    help="record this commit as source_commit instead of git HEAD "
+                         "(for sandboxed runs without git); env CDS_SOURCE_COMMIT is the fallback")
     args = ap.parse_args(argv)
     if args.check:
-        return check()
+        return check(commit=args.source_commit)
     out = Path(args.out) if args.out else REPO / "portable"
     dist = Path(args.dist) if args.dist else REPO / "dist"
-    files, zip_path = build(out, make_zip=not args.no_zip, dist_dir=dist if not args.no_zip else None)
+    files, zip_path = build(out, make_zip=not args.no_zip, dist_dir=dist if not args.no_zip else None,
+                            commit=args.source_commit)
     print("built %d files into %s" % (len(files), out))
     if zip_path:
         print("zip: %s" % zip_path)
