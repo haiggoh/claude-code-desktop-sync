@@ -123,6 +123,18 @@ class BuilderTests(unittest.TestCase):
                 builder.build(src, dest, fault_inject=mutate)
             self.assertFalse(dest.exists(), "invalidated artifact must be removed from disk")
 
+    def test_skill_script_collision_refused_not_clobbered(self):
+        # review M1: bin/run.py mirrored into a skill that owns scripts/run.py
+        # with different content must refuse, not silently substitute
+        with tempfile.TemporaryDirectory() as d:
+            src = make_legacy_plugin(d)
+            skill_scripts = src / "skills" / "legacy-thing" / "scripts"
+            skill_scripts.mkdir(parents=True)
+            (skill_scripts / "tool.py").write_text("# skill-owned wrapper\n", encoding="utf-8")
+            with self.assertRaises(builder.BuilderError) as cm:
+                builder.build(src, Path(d) / "out")
+            self.assertIn("collision", str(cm.exception).lower())
+
     def test_dynamic_dependency_in_any_hook_event_disclosed(self):
         with tempfile.TemporaryDirectory() as d:
             src = make_legacy_plugin(d)

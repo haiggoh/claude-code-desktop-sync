@@ -84,6 +84,26 @@ class ReconcileTests(unittest.TestCase):
             self.assertEqual(read(code)["mcpServers"]["s"]["command"], "/c")
             self.assertEqual(read(desk)["mcpServers"]["s"]["command"], "/d")
 
+    def test_held_conflict_persists_across_runs(self):
+        # review H4: a held edit/delete conflict must NOT be re-propagated on
+        # the next run (the user's deletion must not be silently reverted)
+        with tempfile.TemporaryDirectory() as d:
+            code, desk, snap = Path(d) / "c.json", Path(d) / "d.json", Path(d) / "s.json"
+            write(code, {"mcpServers": {"s": {"command": "/a"}}})
+            write(desk, {"mcpServers": {"s": {"command": "/a"}}})
+            st = mcp.SyncState(snap)
+            st.run(code, desk)
+            c = read(code)
+            c["mcpServers"]["s"] = {"command": "/edited"}
+            write(code, c)
+            write(desk, {"mcpServers": {}})
+            out2 = st.run(code, desk)
+            self.assertIn("s", out2.conflicts)
+            out3 = st.run(code, desk)  # no further edits
+            self.assertIn("s", out3.conflicts, "conflict must persist, not re-propagate")
+            self.assertNotIn("s", read(desk)["mcpServers"],
+                             "the user's deletion must not be silently reverted")
+
     def test_type_conflict_preserves_connector(self):
         with tempfile.TemporaryDirectory() as d:
             code, desk, snap = Path(d) / "c.json", Path(d) / "d.json", Path(d) / "s.json"

@@ -79,7 +79,11 @@ def _load_json(path):
         return json.load(f)
 
 
-def _write_json_private(path, data):
+def _write_json_private(path, data, private=True):
+    """Write via a unique temp + atomic replace. M3 (review): a secrets-bearing
+    existing target keeps its CURRENT mode (never silently widened to 0644 by
+    the tmp, never silently tightened); only our own private state files are
+    forced to 0600."""
     path = Path(path)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -87,15 +91,21 @@ def _write_json_private(path, data):
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
-    if hasattr(os, "fchmod"):
+    try:
+        if path.exists():
+            mode = os.stat(path).st_mode & 0o777  # preserve user-owned mode
+        else:
+            mode = 0o600 if private else 0o666 & ~_umask()
+        os.chmod(tmp, mode)
+    except OSError:
         pass
-    os.chmod(tmp, 0o600)
     os.replace(tmp, path)
-    if hasattr(os, "chmod"):
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
+
+
+def _umask():
+    current = os.umask(0o022)
+    os.umask(current)
+    return current
 
 
 class Out:
@@ -250,9 +260,23 @@ class SyncState:
 
             new_snap = dict(snap)  # preserve unknown fields
             new_snap["schema"] = SNAPSHOT_SCHEMA
-            new_snap["servers"] = {name: {"code": _exact(code_out[name]), "desk": _exact(desk_out[name])}
-                                   for name in code_out
-                                   if name in desk_out and name not in out.conflicts}
+            servers = {name: {"code": _exact(code_out[name]), "desk": _exact(desk_out[name])}
+                       for name in code_out
+                       if name in desk_out and name not in out.conflicts}
+            # H4 (review): held conflicts MUST stay in the snapshot with their
+            # last-known values, else the next run sees no baseline and re-propagates
+            # the survivor — silently reverting the user's deletion
+            for name in out.conflicts:
+                if name in snap_servers:
+                    servers[name] = snap_servers[name]
+                else:
+                    sides = {}
+                    if name in code_out:
+                        sides["code"] = _exact(code_out[name])
+                    if name in desk_out:
+                        sides["desk"] = _exact(desk_out[name])
+                    servers[name] = sides
+            new_snap["servers"] = servers
             self.save(new_snap)
             return out
         finally:

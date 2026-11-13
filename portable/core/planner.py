@@ -32,11 +32,17 @@ class Action:
         self.destination = destination
         self.revision = revision
         self.side_effects = side_effects  # human-readable, exact
+        self.content = getattr(self, "content", None)        # bytes to write (add/update)
+        self.base_digest = getattr(self, "base_digest", None)  # expected prior digest
 
     def to_dict(self):
+        import base64
         return {"action_id": self.action_id, "kind": self.kind,
                 "destination": self.destination, "revision": self.revision,
-                "side_effects": self.side_effects}
+                "side_effects": self.side_effects,
+                "content_b64": base64.b64encode(self.content).decode("ascii")
+                    if self.content is not None else None,
+                "base_sha256": self.base_digest}
 
 
 class Plan:

@@ -91,17 +91,25 @@ class HostManager:
         return cls(HostGrant(kind, root, evidence))
 
     def write_config(self, path, data):
-        """Atomically write a JSON config — only inside the verified root."""
+        """Atomically write a JSON config — only inside the verified root.
+        M3 (review): an existing secrets-bearing config keeps its current mode
+        (the temp is chmodded to it before replace); a new file gets 0600."""
         target = Path(path).resolve()
         root = Path(self.grant.root)
         if root not in target.parents and target != root:
             raise HostGuardError("host-management refused: %s escapes verified root %s"
                                  % (target, root))
         tmp = target.with_suffix(target.suffix + ".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
+        fd = os.open(str(tmp), os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
+        try:
+            mode = os.stat(target).st_mode & 0o777 if target.exists() else 0o600
+            os.chmod(tmp, mode)
+        except OSError:
+            pass
         os.replace(tmp, target)
         return str(target)

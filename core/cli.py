@@ -61,17 +61,17 @@ def _emit(args, human, doc, out):
         out.write(human + "\n")
 
 
-def cmd_status(args, env, out, err):
+def cmd_status(args, env, out, err, stdin=None):
     home = _claude_home(env)
     inv = inventory.Inventory({"claude_home": home})
     recs = inv.collect()
-    doc = {"status": "ok", "records": [r.__dict__ | {"source": r.source} for r in recs],
+    # explicit dict build — no PEP 584 `|` (must run on Python 3.8; review H2)
+    doc = {"status": "ok",
+           "records": [{"name": r.name, "source": r.source, "kind": r.kind,
+                        "version": r.installed_version or r.declared_version,
+                        "loaded_observable": r.loaded_observable, "notes": r.notes}
+                       for r in recs],
            "notes": inv.notes}
-    # __dict__ includes all Record fields; keep JSON simple:
-    doc["records"] = [{"name": r.name, "source": r.source, "kind": r.kind,
-                       "version": r.installed_version or r.declared_version,
-                       "loaded_observable": r.loaded_observable, "notes": r.notes}
-                      for r in recs]
     human = "status: ok — %d item(s)" % len(recs) + ("" if not inv.notes else "  notes: " + ", ".join(inv.notes))
     for r in recs:
         human += "\n  %s (%s, %s)" % (r.name, r.source, r.kind)
@@ -79,7 +79,7 @@ def cmd_status(args, env, out, err):
     return exitcodes.EXIT_OK
 
 
-def cmd_doctor(args, env, out, err):
+def cmd_doctor(args, env, out, err, stdin=None):
     home = _claude_home(env)
     checks = {
         "python": sys.version.split()[0],
@@ -93,7 +93,7 @@ def cmd_doctor(args, env, out, err):
     return exitcodes.EXIT_OK
 
 
-def cmd_plan(args, env, out, err):
+def cmd_plan(args, env, out, err, stdin=None):
     home = _claude_home(env)
     inv = inventory.Inventory({"claude_home": home})
     recs = inv.collect()
@@ -106,7 +106,7 @@ def cmd_plan(args, env, out, err):
     return p.exit_code
 
 
-def cmd_build(args, env, out, err):
+def cmd_build(args, env, out, err, stdin=None):
     src = _flag(args, "--source")
     outdir = _flag(args, "--out") or "dist/artifact"
     if not src:
@@ -122,7 +122,7 @@ def cmd_build(args, env, out, err):
     return exitcodes.EXIT_OK
 
 
-def cmd_apply(args, env, out, err):
+def cmd_apply(args, env, out, err, stdin=None):
     plan_file = _flag(args, "--plan")
     if not plan_file:
         err.write("apply: --plan is required\n")
@@ -131,14 +131,25 @@ def cmd_apply(args, env, out, err):
         err.write("apply: refused — confirmation defaults to No; pass --yes\n")
         return exitcodes.EXIT_CONFLICT_STALE
     pdoc = json.loads(Path(plan_file).read_text(encoding="utf-8"))
+    import base64
     from .planner import Plan, Action
-    actions = [Action(a["action_id"], a["kind"], a["destination"], a["revision"], a["side_effects"])
-               for a in pdoc["actions"]]
-    for a in actions:
-        a.content = b""
+    actions = []
+    for a in pdoc["actions"]:
+        act = Action(a["action_id"], a["kind"], a["destination"], a["revision"], a["side_effects"])
+        act.content = base64.b64decode(a["content_b64"]) if a.get("content_b64") else None
+        act.base_digest = a.get("base_sha256")
+        actions.append(act)
     plan = Plan(pdoc["plan_id"], pdoc["inputs_revision"], actions, pdoc["status"],
                 pdoc.get("exit_code", 0), pdoc.get("notes", ""))
     home = _claude_home(env)
+    # host-management boundary (H3): no write without a verified grant
+    from . import hostguard
+    kind, ev = hostguard.detect_context(env, sys.platform, home, _isatty(stdin))
+    try:
+        hostguard.HostManager.for_context(kind, ev, root=home)
+    except hostguard.HostGuardError as e:
+        err.write("apply refused: %s\n" % e)
+        return exitcodes.EXIT_PREREQ
     try:
         r = lifecycle.apply_plan(plan, home, home / "desktop-sync-state")
     except lifecycle.ConflictError as e:
@@ -152,7 +163,7 @@ def cmd_apply(args, env, out, err):
     return exitcodes.EXIT_OK
 
 
-def cmd_verify(args, env, out, err):
+def cmd_verify(args, env, out, err, stdin=None):
     zips = sorted((Path("dist")).glob("*-portable.zip")) if Path("dist").is_dir() else []
     results = {}
     for z in zips:
@@ -166,7 +177,7 @@ def cmd_verify(args, env, out, err):
     return exitcodes.EXIT_OK if not zips or all(v["ready"] for v in results.values()) else exitcodes.EXIT_PARTIAL
 
 
-def cmd_recover(args, env, out, err):
+def cmd_recover(args, env, out, err, stdin=None):
     home = _claude_home(env)
     rep = lifecycle.recover(home / "desktop-sync-state")
     doc = {"status": "ok", "partial": rep["partial"], "note": rep["note"]}
@@ -175,7 +186,7 @@ def cmd_recover(args, env, out, err):
     return exitcodes.EXIT_OK
 
 
-def cmd_disable(args, env, out, err):
+def cmd_disable(args, env, out, err, stdin=None):
     v = coexistence.coexistence_verdict("claude-code-desktop-sync", "claude-code-desktop-sync-copy")
     try:
         coexistence.may_activate(v, explicit_approval=("--yes" in args))
@@ -186,7 +197,7 @@ def cmd_disable(args, env, out, err):
     return exitcodes.EXIT_OK
 
 
-def cmd_records(args, env, out, err):
+def cmd_records(args, env, out, err, stdin=None):
     home = _claude_home(env)
     store = records.RecordStore(home / "desktop-sync-state" / "data", allowlist=("waypoints",))
     op = args[0] if args else ""
@@ -205,13 +216,24 @@ def cmd_records(args, env, out, err):
     return exitcodes.EXIT_OK if r["status"] == "applied" else exitcodes.EXIT_PARTIAL
 
 
-def cmd_mcp(args, env, out, err):
+def cmd_mcp(args, env, out, err, stdin=None):
     code = Path(env.get("CLAUDE_CODE_CONFIG") or (Path(env.get("HOME", str(Path.home()))) / ".claude.json"))
     desk = Path(env.get("CLAUDE_DESKTOP_CONFIG") or "")
     sync_home = Path(env.get("CLAUDE_SYNC_HOME") or (Path(env.get("HOME", str(Path.home()))) / ".claude" / "desktop-sync"))
     if not desk or not desk.is_file() or not code.is_file():
         err.write("mcp: both configs must exist (set CLAUDE_CODE_CONFIG / CLAUDE_DESKTOP_CONFIG)\n")
         return exitcodes.EXIT_PREREQ
+    if "--preview" not in args:
+        # host-management boundary (H3): a real sync writes host config — needs a
+        # verified code-host grant, never a cloud/unknown context
+        from . import hostguard
+        home = _claude_home(env)
+        kind, ev = hostguard.detect_context(env, sys.platform, home, _isatty(stdin))
+        try:
+            hostguard.HostManager.for_context(kind, ev, root=home)
+        except hostguard.HostGuardError as e:
+            err.write("mcp refused: %s\n" % e)
+            return exitcodes.EXIT_PREREQ
     st = mcp.SyncState(sync_home / "last-sync-state-v2.json",
                        backup_dir=sync_home / "backups", journal=sync_home / "journal.jsonl")
     if "--preview" in args:
@@ -229,6 +251,13 @@ _COMMANDS = {
     "apply": cmd_apply, "verify": cmd_verify, "recover": cmd_recover, "disable": cmd_disable,
     "records": cmd_records, "mcp": cmd_mcp,
 }
+
+
+def _isatty(stream):
+    try:
+        return bool(stream is not None and stream.isatty())
+    except Exception:
+        return False
 
 
 def _flag(args, name):
@@ -281,7 +310,7 @@ def main(argv, stdin=None, stdout=None, stderr=None, env=None):
         stderr.write("desktop-sync: unknown command %r\n%s" % (argv[0], USAGE))
         return exitcodes.EXIT_INVALID
     try:
-        return cmd(argv[1:], env, stdout, stderr)
+        return cmd(argv[1:], env, stdout, stderr, stdin)
     except Exception as e:
         stderr.write("desktop-sync: %s: %s\n" % (type(e).__name__, e))
         return exitcodes.EXIT_FAILURE
@@ -292,9 +321,42 @@ def cmd_menu(args, env, stdout, stderr, stdin=None):
     ran = []
 
     def run_action(action):
-        argv = menu_mod.build_argv(action, {})
-        # menu dispatches to the same CLI handlers; prompts are pre-answered by
-        # the user in the plain menu, here we run the argv through main()
+        # M2 (review): the menu MUST ask the spec's prompts before running —
+        # placeholders never pass through literally into an effectful command
+        answers = {}
+        for pr in action.get("prompts", []):
+            if pr.get("type") == "choice":
+                choices = pr.get("choices") or []
+                for i, c in enumerate(choices, 1):
+                    stdout.write("    %d) %s\n" % (i, c.get("label", c.get("value"))))
+                default = pr.get("default")
+                ans = None
+                while ans is None:
+                    line = stdin.readline()
+                    if line == "":
+                        raise EOFError
+                    line = line.strip()
+                    if line == "" and default is not None:
+                        ans = default
+                    elif line.isdigit() and 1 <= int(line) <= len(choices):
+                        ans = choices[int(line) - 1]["value"]
+                    else:
+                        stdout.write("    invalid choice\n")
+                answers[pr["id"]] = ans
+            elif pr.get("type") == "confirm":
+                default = pr.get("default") or ""
+                line = stdin.readline()
+                if line == "":
+                    raise EOFError
+                ans = line.strip().lower()
+                answers[pr["id"]] = default if ans == "" else ("--yes" if ans in ("y", "yes") else "--no")
+            else:
+                stdout.write("  %s " % pr.get("question", pr["id"]))
+                line = stdin.readline()
+                if line == "":
+                    raise EOFError
+                answers[pr["id"]] = line.rstrip("\n") or (pr.get("default") or "")
+        argv = menu_mod.build_argv(action, answers)
         rc = main([a for a in argv[1:] if a], stdin=stdin, stdout=stdout, stderr=stderr, env=env)
         ran.append((action["label"], rc))
 

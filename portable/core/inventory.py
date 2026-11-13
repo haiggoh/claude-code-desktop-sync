@@ -138,7 +138,7 @@ class Inventory:
                     recs.append(rec)
         return recs, None
 
-    def _scan_synced(self, plugins_dir):
+    def _scan_synced(self, plugins_dir, registry, cache_recs):
         synced = plugins_dir / "synced"
         if not synced.is_dir():
             self.notes.append("synced-absent")
@@ -149,8 +149,15 @@ class Inventory:
             if manifest.is_file():
                 try:
                     doc = json.loads(manifest.read_text(encoding="utf-8-sig"))
-                    rec = Record(str(doc.get("name", child.name)), SOURCE_SYNCED, "plugin",
-                                 notes="synced copy is shadowed by same-name installed plugin (fact 4)")
+                    # M4 (review): only claim shadowing when a same-name installed
+                    # plugin actually exists — never assert it unconditionally
+                    pname = str(doc.get("name", child.name))
+                    shadowed = pname in registry or any(
+                        r.name == pname for r in cache_recs)
+                    rec = Record(pname, SOURCE_SYNCED, "plugin",
+                                 notes=("synced copy is shadowed by same-name installed "
+                                        "plugin (fact 4)" if shadowed else "synced copy; no "
+                                        "same-name installed plugin observed"))
                     rec.declared_version = doc.get("version")
                     recs.append(rec)
                 except Exception:
@@ -251,7 +258,7 @@ class Inventory:
                 rec.notes = (rec.notes + ";cache-missing").strip(";")
                 if rec.evidence_level != EV_UNKNOWN:
                     rec.evidence_level = EV_SOURCE_INSPECTED  # registry is authoritative for identity
-        for rec in self._scan_synced(plugins_dir):
+        for rec in self._scan_synced(plugins_dir, registry, cache_recs):
             merge(rec)
         for rec in self._scan_dir(home / "skills", "loose-skill", SOURCE_SKILLS_DIR):
             merge(rec)

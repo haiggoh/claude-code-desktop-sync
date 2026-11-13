@@ -294,8 +294,15 @@ def build(source, dest, limits=None, external_on_path=None, fault_inject=None):
         sk_scripts = sk / "scripts"
         sk_scripts.mkdir(parents=True, exist_ok=True)
         for basename, data in bin_files:
-            (sk_scripts / basename).write_bytes(data)
-            files[str((sk_scripts / basename).relative_to(dest))] = sha256_bytes(data)
+            existing = sk_scripts / basename
+            if existing.exists() and existing.read_bytes() != data:
+                # M1 (review): never clobber a skill-owned script of the same
+                # basename with the bin copy — refuse loudly instead
+                raise BuilderError("name collision: bin/%s would overwrite the "
+                                   "skill-owned %s" % (basename, existing.relative_to(dest)))
+            if not existing.exists():
+                existing.write_bytes(data)
+                files[str(existing.relative_to(dest))] = sha256_bytes(data)
 
     artifact = {
         "schema": "cds-artifact/1",

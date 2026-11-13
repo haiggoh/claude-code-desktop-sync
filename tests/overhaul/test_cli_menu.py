@@ -142,6 +142,37 @@ class PlainMenuTests(unittest.TestCase):
         self.assertEqual(seen, [spec["actions"][0]],
                          "blank Enter must run the read-only preview action, nothing else")
 
+    def test_menu_prompts_substitute_placeholders(self):
+        # review M2: the menu must ask the spec's prompts; placeholders never
+        # pass through literally into an effectful command
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "plug"
+            (src / ".claude-plugin").mkdir(parents=True)
+            (src / ".claude-plugin" / "plugin.json").write_text('{"name": "plug", "version": "0.1"}')
+            (src / "README.md").write_text("# plug\n")
+            outdir = Path(d) / "out"
+            # choose action 4 (Build… — 1-based menu numbering), then answer its two prompts
+            stdin_text = "4\n%s\n%s\nq\n" % (src, outdir)
+            r = run_cli(["menu", "--plain"], d, stdin_text=stdin_text)
+            self.assertIn(r.returncode, (0, 2))
+            self.assertTrue((outdir / "README.md").exists(),
+                            "build ran with the ANSWERED paths, not literal {plugin}/{out}")
+            self.assertFalse((Path(d) / "{out}").exists(), "no literal-placeholder dir")
+
+    def test_apply_refused_without_host_grant(self):
+        # review H3: effectful commands need a verified code-host grant;
+        # a sandboxed env (no session markers, no TTY) must be refused
+        with tempfile.TemporaryDirectory() as d:
+            plan = Path(d) / "p.json"
+            plan.write_text(json.dumps({
+                "plan_id": "plan-x", "inputs_revision": "r", "status": "ok", "exit_code": 0,
+                "actions": [{"action_id": "a1", "kind": "add", "destination": "x.py",
+                             "revision": "r", "side_effects": "write",
+                             "content_b64": "IyBoZWxsbw==", "base_sha256": None}]}))
+            r = run_cli(["apply", "--plan", str(plan), "--yes"], d)
+            self.assertEqual(r.returncode, 3, "apply without verified grant -> exit 3")
+            self.assertFalse((Path(d) / ".claude" / "x.py").exists())
+
     def test_unknown_action_rejected_no_apply(self):
         with tempfile.TemporaryDirectory() as d:
             before = harness.tree_snapshot(d)
