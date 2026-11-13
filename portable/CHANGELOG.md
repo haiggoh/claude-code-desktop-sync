@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `bin/sync_code_desktop.py`, `install.py`, `uninstall.py` now parse arguments before doing
+  anything: `--help`/`-h` prints usage and exits 0, an unknown flag exits 2 with usage on
+  stderr — previously `--help` ran a real sync/install/uninstall. The no-arg hook route is
+  unchanged (regression-tested). Fixes waypoint `cds-legacy-engine-ignores-help`.
+
 ## 2.0.1
 
 ### Fixed — bare `desktop-sync` in a terminal showed nothing and looked dead (user report 2026-11-13)

@@ -36,6 +36,17 @@ END = "<!-- claude-code-desktop-sync:end -->"
 BLOCK_RE = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.DOTALL)
 # Must match install.py's HOOK_MARKER: the engine filename is how we identify our own hook.
 HOOK_MARKER = "sync_code_desktop.py"
+USAGE = """uninstall.py — remove the standalone claude-code-desktop-sync install.
+
+Usage:
+  python3 uninstall.py            # remove hook + CLAUDE.md block (keeps script/state/backups)
+  python3 uninstall.py --purge    # also delete ~/.claude/desktop-sync
+  python3 uninstall.py --help     # print this help and exit 0 (never uninstalls)
+
+Unknown flags exit 2 with this usage on stderr.
+Environment variables read: none.
+"""
+
 PURGE = "--purge" in sys.argv
 
 
@@ -113,6 +124,17 @@ def remove_snippet(stamp):
 
 
 def main():
+    global PURGE
+    argv = sys.argv[1:]
+    if argv:
+        if argv in (["--help"], ["-h"]):
+            sys.stdout.write(USAGE)
+            return
+        if argv == ["--purge"]:
+            PURGE = True
+        else:
+            sys.stderr.write("uninstall.py: unknown argument %r\n%s" % (argv[0], USAGE))
+            sys.exit(2)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     hook_removed = remove_hook(stamp)
     remove_snippet(stamp)

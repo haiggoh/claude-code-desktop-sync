@@ -63,13 +63,14 @@ class Sandbox:
             "PYTHONDONTWRITEBYTECODE": "1",
         }
 
-    def run(self):
+    def run(self, args=()):
         # Start from the real environment MINUS every leaky key, then overlay the
         # sandbox: the engine must never see the real HOME/PATH/config overrides.
         env = {k: v for k, v in os.environ.items() if k.upper() not in _LEAKY_ENV_UPPER}
         env.update(self.env)
-        r = subprocess.run([sys.executable, str(ENGINE)], capture_output=True, text=True,
-                           env=env)
+        r = subprocess.run([sys.executable, str(ENGINE)] + list(args), capture_output=True,
+                           encoding="utf-8", errors="replace", env=env)
+        self.rc = r.returncode
         return (r.stdout + r.stderr).strip()
 
 
@@ -240,12 +241,68 @@ def test_path_isolation(sb):
           "path-isolation: %r resolved to the sandbox bin dir" % launcher)
 
 
+def test_help_flag_no_side_effects(sb):
+    print("\n[--help prints usage, exits 0, and writes NOTHING (waypoint cds-legacy-engine-ignores-help)]")
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
+    write(sb.desk, {"mcpServers": {}})
+    def snap():
+        out = {}
+        for p in sorted(Path(sb.env["CLAUDE_SYNC_HOME"]).parent.rglob("*")):
+            if p.is_file():
+                out[str(p)] = p.read_bytes()
+        return out
+    before = snap()
+    out = sb.run(["--help"])
+    check(sb.rc == 0, "help: exit 0 (got %d)" % sb.rc)
+    check("usage" in out.lower(), "help: prints usage")
+    check(snap() == before, "help: zero filesystem writes (no state, no lock, no config)")
+    check("fs" not in read(sb.desk)["mcpServers"], "help: did NOT run a sync")
+
+
+def test_unknown_flag_exits_2_no_side_effects(sb):
+    print("\n[unknown flag exits 2 with usage on stderr, writes NOTHING]")
+    write(sb.code, {"mcpServers": {}})
+    write(sb.desk, {"mcpServers": {}})
+    syncdir = Path(sb.env["CLAUDE_SYNC_HOME"])
+    out = sb.run(["--bogus"])
+    check(sb.rc == 2, "bogus: exit 2 (got %d)" % sb.rc)
+    check("usage" in out.lower(), "bogus: usage on stderr")
+    check(not syncdir.exists(), "bogus: no sync state written")
+
+
+def test_installers_help_and_bad_flag_no_writes(sb):
+    print("\n[install.py / uninstall.py: --help exits 0 with zero writes; unknown flag exits 2]")
+    repo = REPO
+    for script in ("install.py", "uninstall.py"):
+        for args, want_rc in ((["--help"], 0), (["--bogus"], 2)):
+            env = dict(sb.env)
+            before = set(Path(env["HOME"]).rglob("*")) if Path(env["HOME"]).exists() else set()
+            r = subprocess.run([sys.executable, str(repo / script)] + args, capture_output=True,
+                               encoding="utf-8", errors="replace", env=env)
+            check(r.returncode == want_rc, "%s %s: exit %d (got %d)" % (script, args[0], want_rc, r.returncode))
+            check("usage" in (r.stdout + r.stderr).lower(), "%s %s: prints usage" % (script, args[0]))
+            after = set(Path(env["HOME"]).rglob("*")) if Path(env["HOME"]).exists() else set()
+            check(after == before, "%s %s: zero writes under HOME" % (script, args[0]))
+
+
+def test_hook_route_still_no_arg():
+    print("\n[SessionStart hook route unchanged: bare no-arg engine (hook contract)]")
+    hooks = json.loads((REPO / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    args = hooks["hooks"]["SessionStart"][0]["hooks"][0].get("args", [])
+    check(args == ["${CLAUDE_PLUGIN_ROOT}/bin/sync_code_desktop.py"],
+          "hook still invokes the engine with no args, got %r" % args)
+
+
 def main():
     for fn in (test_push_pull_remove, test_first_run_clash, test_two_sided_conflict,
                test_command_change_detected, test_remote_in_desktop, test_malformed_mcpservers,
                test_same_relative_launcher, test_type_conflict_preserves_connector, test_bom_tolerant,
                test_home_isolation, test_path_isolation):
         scenario(fn)
+    for fn in (test_help_flag_no_side_effects, test_unknown_flag_exits_2_no_side_effects,
+               test_installers_help_and_bad_flag_no_writes):
+        scenario(fn)
+    test_hook_route_still_no_arg()
     print()
     if failures:
         print(f"{failures} check(s) FAILED")

@@ -48,6 +48,17 @@ BEGIN = "<!-- claude-code-desktop-sync:begin -->"
 END = "<!-- claude-code-desktop-sync:end -->"
 BLOCK_RE = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.DOTALL)
 
+USAGE = """install.py — standalone installer for claude-code-desktop-sync.
+
+Usage:
+  python3 install.py            # install / update (copies engine, registers hook, initial sync)
+  python3 install.py --dry-run  # show what would change, write nothing
+  python3 install.py --help     # print this help and exit 0 (never installs)
+
+Unknown flags exit 2 with this usage on stderr.
+Environment variables read: none.
+"""
+
 DRY = "--dry-run" in sys.argv
 
 
@@ -165,6 +176,17 @@ def install_snippet(stamp):
 
 
 def main():
+    global DRY
+    argv = sys.argv[1:]
+    if argv:
+        if argv in (["--help"], ["-h"]):
+            sys.stdout.write(USAGE)
+            return
+        if argv == ["--dry-run"]:
+            DRY = True
+        else:
+            sys.stderr.write("install.py: unknown argument %r\n%s" % (argv[0], USAGE))
+            sys.exit(2)
     if not SRC.exists() or not SNIPPET.exists():
         sys.exit("error: run this from inside the cloned repo (bin/ and templates/ missing).")
     stamp = time.strftime("%Y%m%d-%H%M%S")

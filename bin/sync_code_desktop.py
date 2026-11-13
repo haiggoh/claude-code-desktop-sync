@@ -480,7 +480,28 @@ def _run():
     _flush()
 
 
+USAGE = """sync_code_desktop.py — sync stdio MCP servers between Claude Code and Claude Desktop.
+
+Usage:
+  python3 sync_code_desktop.py            # run one sync now (the SessionStart hook route; no args)
+  python3 sync_code_desktop.py --help     # print this help and exit 0 (never runs a sync)
+
+Unknown flags exit 2 with this usage on stderr. The no-argument route is the hook
+contract and is unchanged.
+
+Environment variables read: CLAUDE_CODE_CONFIG, CLAUDE_DESKTOP_CONFIG, CLAUDE_SYNC_HOME
+(override the default config/state paths).
+"""
+
+
 def main():
+    argv = sys.argv[1:]
+    if argv:
+        if argv in (["--help"], ["-h"]):
+            sys.stdout.write(USAGE)
+            return
+        sys.stderr.write("sync_code_desktop.py: unknown argument %r\n%s" % (argv[0], USAGE))
+        sys.exit(2)
     if not CODE_CONFIG.exists() or not DESKTOP_CONFIG.exists():
         return  # one or both apps not installed here -> nothing to sync
     if not acquire_lock():
