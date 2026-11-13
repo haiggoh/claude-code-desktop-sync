@@ -153,8 +153,13 @@ class ReconcileTests(unittest.TestCase):
             write(Path(d) / "d.json", {"mcpServers": {}})
             st = mcp.SyncState(snap, backup_dir=Path(d) / "b", journal=Path(d) / "j.jsonl")
             st.run(Path(d) / "c.json", Path(d) / "d.json")
-            mode = oct(os.stat(snap).st_mode & 0o777)
-            self.assertEqual(mode, "0o600", "snapshot may hold server env -> 0600, got %s" % mode)
+            if os.name == "posix":
+                mode = oct(os.stat(snap).st_mode & 0o777)
+                self.assertEqual(mode, "0o600", "snapshot may hold server env -> 0600, got %s" % mode)
+            else:
+                # Windows chmod only maps the read-only bit; ACL policy is
+                # platform-specific and documented as best-effort there
+                self.assertTrue(snap.exists())
 
 
 if __name__ == "__main__":

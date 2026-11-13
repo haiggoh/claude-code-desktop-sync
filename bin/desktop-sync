@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""desktop-sync — v2 CLI entry for claude-code-desktop-sync.
+
+Bare on a TTY opens the dependency-free numbered menu; any subcommand/flag is
+direct CLI and never opens the menu; bare without a TTY exits 2. See --help.
+Legacy no-arg engine route (bin/sync_code_desktop.py) is separate and unchanged.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+from core import cli
+
+if __name__ == "__main__":
+    sys.exit(cli.main(sys.argv[1:]))

@@ -24,6 +24,7 @@ the committed `portable/` differs from a fresh build; CI runs `--check`.
 | `hooks/hooks.json` | unchanged | rewritten `bin/`→`scripts/` | — | — | — | `test_portable.py` | — |
 | `skills/desktop-sync/SKILL.md` | unchanged | reference rewritten | — | — | `/claude-code-desktop-sync:desktop-sync` | `test_portable.py` | skill name |
 | `install.py` / `uninstall.py` | unchanged (host-only) | **excluded** (`unsupported`, code-only) | self | — | — | CI dry-run step | — |
+| `bin/desktop-sync` (v2 CLI entry) | unchanged (host-only; Code loads top-level bin) | **excluded** (same reason as bin/: top-level bin blocks Chat/Cowork, fact 1; the target-side route is the skill, Phase 11-B/C) | — | — | — | `test_cli_menu.py` | `desktop-sync` on Code PATH |
 | `templates/CLAUDE.snippet.md` | unchanged | excluded (installer-only) | install.py | — | — | — | — |
 | `tests/`, `.github/`, `rtc-ship.json`, `core/`, `scripts/build-portable.py` | unchanged | excluded (host/tooling) | — | — | — | self | — |
 | `README.md`, `docs/`, `CHANGELOG.md`, `LICENSE` | unchanged | verbatim copies | — | — | — | `test_portable.py` | — |
