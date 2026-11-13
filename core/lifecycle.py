@@ -154,7 +154,8 @@ def apply_plan(plan, dest_root, state_dir, fault_inject=None):
             fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=target.name + ".",
                                        suffix=".tmp")
             try:
-                os.fchmod(fd, 0o600)
+                if hasattr(os, "fchmod"):  # POSIX only; Windows uses ACLs
+                    os.fchmod(fd, 0o600)
                 with os.fdopen(fd, "wb") as f:
                     f.write(content)
                     f.flush()

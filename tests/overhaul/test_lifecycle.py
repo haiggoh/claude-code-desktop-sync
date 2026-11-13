@@ -52,19 +52,17 @@ class ApplyTests(unittest.TestCase):
             (root / "artifact.py").write_bytes(b"original\n")
             state = root / "state"
             state.mkdir()
-            (state / "backups").mkdir()
-            os.chmod(state / "backups", 0o500)  # backup write will fail
-            try:
-                p = make_plan("artifact.py", b"print('v2')\n")
-                with self.assertRaises(lifecycle.LifecycleError) as cm:
-                    lifecycle.apply_plan(p, root, state, fault_inject=None)
-                self.assertIn("backup", str(cm.exception).lower())
-                self.assertEqual((root / "artifact.py").read_bytes(), b"original\n",
-                                 "target must be untouched when backup verification fails")
-                j = [json.loads(line) for line in (state / "journal.jsonl").read_text().splitlines()]
-                self.assertEqual(j[-1]["status"], "failed-prewrite")
-            finally:
-                os.chmod(state / "backups", 0o700)
+            # a FILE where the backups dir must be -> mkdir fails even for root
+            # (chmod-based failure would not reproduce in root CI containers)
+            (state / "backups").write_text("blocker", encoding="utf-8")
+            p = make_plan("artifact.py", b"print('v2')\n")
+            with self.assertRaises(lifecycle.LifecycleError) as cm:
+                lifecycle.apply_plan(p, root, state, fault_inject=None)
+            self.assertIn("backup", str(cm.exception).lower())
+            self.assertEqual((root / "artifact.py").read_bytes(), b"original\n",
+                             "target must be untouched when backup verification fails")
+            j = [json.loads(line) for line in (state / "journal.jsonl").read_text().splitlines()]
+            self.assertEqual(j[-1]["status"], "failed-prewrite")
 
     def test_stale_input_conflict_zero_writes(self):
         with tempfile.TemporaryDirectory() as d:
