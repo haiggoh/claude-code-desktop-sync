@@ -1,8 +1,22 @@
 # Changelog
 
-## Unreleased
+## 2.0.0
 
-Phase 1 of the v2 overhaul (branch `feat/v2-overhaul`; not released):
+**v2 overhaul (2026-11-13).** A compatibility/reconciliation product on top of the unchanged legacy
+engine: a new `desktop-sync` CLI + dependency-free menu (`menu-spec` v1), a deterministic builder that
+turns unchanged Code plugins — and this plugin itself — into a Chat/Cowork-installable `portable/`
+package (no top-level `bin/`, same manifest name), a host-management guard, read-only inventory, a
+pure planner, lifecycle/recovery, selected-record export/import and a hardened MCP reconciler.
+**Unchanged:** `hooks/hooks.json`, `bin/sync_code_desktop.py` (the SessionStart engine), `install.py`,
+`uninstall.py` — existing Code installs behave exactly as 1.0.3 at session start.
+
+**Evidence, stated honestly:** fixture-tested on macOS/Linux/Windows CI (legacy + 116 overhaul tests)
+and two independent review rounds; the Terminal.app window driver was qualified live. **NOT TESTED
+live:** uploading the portable zip to claude.ai, its behaviour in Chat/Cowork, and account-sync
+coexistence with the Code install — those surfaces are reported as fixture-tested, never
+runtime-qualified, until you run the live checks (docs/V2-OVERVIEW.md).
+
+The phase-by-phase detail follows. Phase 1 of the v2 overhaul:
 
 ### Fixed
 - Legacy test runner is now fully isolated: each engine subprocess gets a sandbox
