@@ -34,9 +34,9 @@ def make_legacy_plugin(root, with_missing_sibling=False, with_private=False,
     (src / "bin").mkdir()
     helper = "VALUE = 41\n" if not with_missing_sibling else ""
     (src / "bin" / "helper.py").write_text(helper, encoding="utf-8")
-    tool = ("import helper\n"
-            "import missing_mod\n" if with_missing_sibling else "import helper\n") + \
-           "print('tool-ok', helper.VALUE + 1)\n"
+    tool = ("import helper\nimport json\n"
+            + ("from . import missing_mod\n" if with_missing_sibling else "")
+            + "print('tool-ok', helper.VALUE + 1)\n")
     (src / "bin" / "tool.py").write_text(tool, encoding="utf-8")
     skill = src / "skills" / "legacy-thing"
     (skill / "resources").mkdir(parents=True)
@@ -94,6 +94,46 @@ class BuilderTests(unittest.TestCase):
             with self.assertRaises(builder.BuilderError) as cm:
                 builder.build(src, Path(d) / "out")
             self.assertIn("missing_mod", str(cm.exception))
+
+    def test_stdlib_imports_never_refused(self):
+        # regression for the 3.8 job: sys.stdlib_module_names does not exist on
+        # 3.8, so stdlib detection must not depend on it (review finding M2)
+        with tempfile.TemporaryDirectory() as d:
+            src = make_legacy_plugin(d)  # tool.py imports helper AND json (stdlib)
+            art = builder.build(src, Path(d) / "out")
+            self.assertTrue(art["files"])
+
+    def test_third_party_import_disclosed_unknown_not_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = make_legacy_plugin(d)
+            (src / "bin" / "tool.py").write_text(
+                "import helper\nimport some_third_party_lib\n"
+                "print('tool-ok', helper.VALUE + 1)\n", encoding="utf-8")
+            art = builder.build(src, Path(d) / "out")
+            comp = [c for c in art["components"] if c["path"].endswith("tool.py")]
+            self.assertIn("some_third_party_lib", comp[0]["notes"])
+
+    def test_mid_build_source_change_leaves_no_artifact_on_disk(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = make_legacy_plugin(d)
+            dest = Path(d) / "out"
+            def mutate():
+                (src / "README.md").write_text("# changed mid-build\n", encoding="utf-8")
+            with self.assertRaises(builder.BuilderError):
+                builder.build(src, dest, fault_inject=mutate)
+            self.assertFalse(dest.exists(), "invalidated artifact must be removed from disk")
+
+    def test_dynamic_dependency_in_any_hook_event_disclosed(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = make_legacy_plugin(d)
+            hooks = json.loads((src / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+            hooks["hooks"]["PreToolUse"] = [{"hooks": [{"type": "command",
+                "command": "another-external-cmd", "args": []}]}]
+            (src / "hooks" / "hooks.json").write_text(json.dumps(hooks), encoding="utf-8")
+            art = builder.build(src, Path(d) / "out", external_on_path=[])
+            unknowns = [c for c in art["components"] if c.get("adaptation_class") == "unknown"]
+            self.assertTrue(any(c.get("event") == "PreToolUse" for c in unknowns),
+                            "non-SessionStart hook events must also be disclosed")
 
     def test_private_marker_refused(self):
         with tempfile.TemporaryDirectory() as d:

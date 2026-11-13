@@ -32,19 +32,19 @@ class HostGuardError(RuntimeError):
     pass
 
 
-def detect_context(env, platform, home, tty, require_configs=True):
-    """Pure multi-signal context detection. Returns (kind, evidence dict).
-
-    kind is CODE_HOST only when every required signal holds; otherwise the
-    context is "unknown" (or "cloud" when CI/no-TTY signals dominate) —
-    neither of which can manage host config.
+def detect_context(env, platform, home, tty):
+    """Pure multi-signal context detection. Returns (kind, evidence dict of
+    booleans). kind is CODE_HOST only when EVERY required signal is truthy;
+    otherwise "unknown" (or "cloud" when CI/no-TTY dominate) — neither can
+    manage host config. There is deliberately no way to skip the config-file
+    signal: ~/.claude.json must exist.
     """
     evidence = {
         "code_session": bool(env.get("CLAUDE_CODE_SESSION_ID")),
         "plugin_root": bool(env.get("CLAUDE_PLUGIN_ROOT")),
         "desktop_platform": platform in DESKTOP_PLATFORMS,
         "tty": bool(tty),
-        "config_present": bool(require_configs is False or (Path(home) / ".claude.json").is_file()),
+        "config_present": (Path(home) / ".claude.json").is_file(),
     }
     if env.get("CI") and not tty:
         kind = "cloud"
@@ -56,16 +56,19 @@ def detect_context(env, platform, home, tty, require_configs=True):
 
 
 class HostGrant:
-    """A verified grant. `evidence` must be exactly the REQUIRED_SIGNALS tuple
-    as produced by detect_context for a code-host context."""
+    """A verified grant. `evidence` must be the boolean dict produced by
+    detect_context for a code-host context, with every signal truthy —
+    a name-only tuple (or an all-False dict) is NOT verified."""
 
     def __init__(self, kind, root, evidence):
         self.kind = kind
         self.root = str(Path(root).resolve())
-        self.evidence = tuple(evidence)
+        self.evidence = evidence
 
     def verified(self):
-        return self.kind == CODE_HOST and self.evidence == REQUIRED_SIGNALS
+        if self.kind != CODE_HOST or not isinstance(self.evidence, dict):
+            return False
+        return all(self.evidence.get(s) is True for s in REQUIRED_SIGNALS)
 
 
 class HostManager:
@@ -81,10 +84,11 @@ class HostManager:
 
     @classmethod
     def for_context(cls, kind, evidence, root):
-        if kind != CODE_HOST or not all(evidence.get(s) for s in REQUIRED_SIGNALS):
+        if kind != CODE_HOST or not isinstance(evidence, dict) \
+                or not all(evidence.get(s) is True for s in REQUIRED_SIGNALS):
             raise HostGuardError("host-management refused: context %r is not a verified "
                                  "code host (evidence=%r)" % (kind, evidence))
-        return cls(HostGrant(kind, root, REQUIRED_SIGNALS))
+        return cls(HostGrant(kind, root, evidence))
 
     def write_config(self, path, data):
         """Atomically write a JSON config — only inside the verified root."""

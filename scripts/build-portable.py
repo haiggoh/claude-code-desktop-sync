@@ -22,7 +22,11 @@ Usage:
   python3 scripts/build-portable.py --help
 
 Exit codes: 0 ok / check passed · 1 check failed (stale portable/) · 2 bad args.
-Environment variables read: none (the git commit comes from `git rev-parse HEAD`).
+Environment variables read: CDS_SOURCE_COMMIT (optional fallback for the recorded
+source_commit when git is unavailable; the git commit from `git rev-parse HEAD`
+wins when present). Note: --check masks source_commit when comparing (the recorded
+commit is always the parent of the commit carrying portable/) and verifies only
+that it exists in repo history — content freshness is the byte comparison.
 Stdlib only; Python 3.8 compatible.
 """
 

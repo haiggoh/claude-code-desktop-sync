@@ -91,6 +91,21 @@ class ManagerTests(unittest.TestCase):
             with self.assertRaises(hostguard.HostGuardError):
                 hostguard.HostManager(grant).write_config(Path(d) / ".claude.json", {})
 
+    def test_all_false_evidence_dict_refused(self):
+        # review finding M1: a name-shaped tuple or an all-False dict (exactly
+        # what detect_context returns for a non-host) must NOT verify
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / ".claude.json").write_text("{}", encoding="utf-8")
+            kind, ev = hostguard.detect_context(env={}, platform="linux", home=d, tty=False)
+            self.assertNotEqual(kind, hostguard.CODE_HOST)
+            grant = hostguard.HostGrant(kind=hostguard.CODE_HOST, root=d, evidence=ev)
+            with self.assertRaises(hostguard.HostGuardError):
+                hostguard.HostManager(grant).write_config(Path(d) / ".claude.json", {})
+            grant2 = hostguard.HostGrant(kind=hostguard.CODE_HOST, root=d,
+                                         evidence=hostguard.REQUIRED_SIGNALS)
+            with self.assertRaises(hostguard.HostGuardError):
+                hostguard.HostManager(grant2).write_config(Path(d) / ".claude.json", {})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -214,20 +214,31 @@ class Inventory:
         # only if the install path's manifest actually parses
         for name, entry in registry.items():
             rec = merged.get(name)
+            if rec is None:
+                rec = Record(name, SOURCE_REGISTRY, "plugin")
+                merged[name] = rec
             install_path = entry.get("installPath")
             manifest_ok = False
             version = entry.get("version")
             if install_path:
-                manifest = Path(install_path) / ".claude-plugin" / "plugin.json"
-                manifest_ok = manifest.is_file()
-                if manifest_ok:
-                    try:
-                        json.loads(manifest.read_text(encoding="utf-8-sig"))
-                    except Exception:
-                        manifest_ok = False
-            if rec is None:
-                rec = Record(name, SOURCE_REGISTRY, "plugin")
-                merged[name] = rec
+                # never follow a registry-controlled path outside the declared
+                # scoped roots (the registry is untrusted input)
+                try:
+                    Path(install_path).resolve().relative_to(home.resolve())
+                    in_roots = True
+                except ValueError:
+                    in_roots = False
+                if not in_roots:
+                    rec.notes = (rec.notes + ";installPath-outside-roots (not read)").strip(";")
+                    rec.loaded_observable = False
+                else:
+                    manifest = Path(install_path) / ".claude-plugin" / "plugin.json"
+                    manifest_ok = manifest.is_file()
+                    if manifest_ok:
+                        try:
+                            json.loads(manifest.read_text(encoding="utf-8-sig"))
+                        except Exception:
+                            manifest_ok = False
             rec.scope = entry.get("scope")
             if version:
                 rec.installed_version = version

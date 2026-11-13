@@ -109,6 +109,24 @@ class CollectTests(unittest.TestCase):
             self.assertEqual(harness.changed_files(d, before), set(),
                              "inventory must not write anything")
 
+    def test_registry_installpath_outside_roots_is_not_read(self):
+        # review finding M5: installPath is untrusted registry content; it must
+        # never be followed outside the declared scoped roots
+        with tempfile.TemporaryDirectory() as d:
+            home = make_claude_home(d)
+            outside = Path(d) / "outside-home"
+            (outside / ".claude-plugin").mkdir(parents=True)
+            (outside / ".claude-plugin" / "plugin.json").write_text(
+                json.dumps({"name": "waypoints", "version": "9.9.9"}), encoding="utf-8")
+            reg = home / "plugins" / "installed_plugins.json"
+            data = json.loads(reg.read_text(encoding="utf-8"))
+            data["waypoints"]["installPath"] = str(outside)
+            reg.write_text(json.dumps(data), encoding="utf-8")
+            recs = inventory.Inventory({"claude_home": home}).collect()
+            wp = {r.name: r for r in recs}["waypoints"]
+            self.assertNotEqual(wp.installed_version, "9.9.9")
+            self.assertIn("installPath-outside-roots", wp.notes)
+
     def test_scoped_roots_only(self):
         with tempfile.TemporaryDirectory() as d:
             home = make_claude_home(d)
