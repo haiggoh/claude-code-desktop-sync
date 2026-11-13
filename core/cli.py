@@ -244,6 +244,13 @@ def main(argv, stdin=None, stdout=None, stderr=None, env=None):
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
     env = env or dict(os.environ)
+    # Windows consoles default to cp1252 and crash on emoji (UnicodeEncodeError,
+    # CI run 43359234140) — reconfigure to utf-8 with replacement, never crash
+    for stream in (stdout, stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     argv = list(argv)
     if "--help" in argv or "-h" in argv or argv == ["help"]:
         stdout.write(USAGE)
@@ -261,7 +268,9 @@ def main(argv, stdin=None, stdout=None, stderr=None, env=None):
         if errs:
             stderr.write("menu-spec invalid: %s\n" % errs)
             return exitcodes.EXIT_FAILURE
-        stdout.write(json.dumps(spec, indent=2, ensure_ascii=False) + "\n")
+        # ensure_ascii=True: valid JSON that decodes identically and cannot
+        # crash a non-UTF-8 consumer pipe
+        stdout.write(json.dumps(spec, indent=2, ensure_ascii=True) + "\n")
         return exitcodes.EXIT_OK
     if argv[0] == "menu":
         return cmd_menu(argv[1:], env, stdout, stderr, stdin=stdin)
