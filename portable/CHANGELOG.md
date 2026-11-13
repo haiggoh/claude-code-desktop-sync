@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.2
 
 ### Fixed
 - `bin/sync_code_desktop.py`, `install.py`, `uninstall.py` now parse arguments before doing

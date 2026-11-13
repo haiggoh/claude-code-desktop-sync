@@ -1,13 +1,13 @@
 {
   "schema": "haiggoh-portable-build/1",
   "source_repo": "https://github.com/haiggoh/claude-code-desktop-sync",
-  "source_commit": "9a876da12f48b6ee1b668e3bdf9615da11df6fb1",
+  "source_commit": "c8adc5548c26176e6a869a228a2fea5ce4019d33",
   "builder": "scripts/build-portable.py",
   "builder_version": "1.4.0",
   "transform_version": "1",
   "files": {
-    ".claude-plugin/plugin.json": "210a300c28b022f145508b07a4bfa4ee447fe5ff5f827a755eaa0e0d108d7583",
-    "CHANGELOG.md": "7c168d4b4ff42f04419d02a1481987ccdb9664c2bfb93971b26dd57ca38f2391",
+    ".claude-plugin/plugin.json": "fd9c3843f40bbd9c8d94ad779d2473d5e5e428dde5e4d193d01ddea7ce8de98e",
+    "CHANGELOG.md": "2f77b0cf81d05cbe407b588fd0b0828a90fa3bf8aeda7412062e36093ab2d7d3",
     "LICENSE": "9e0a2ce0a04bf4026e3adb0ac631dd1b46024a397da4e8eab287e77eda935a15",
     "README.md": "02086125ec19c768a89013520b092a77061eb71484e0902844155ef90e0132bc",
     "core/__init__.py": "7c534a922e92818bb286835092df01468fa72e3a6c40b0ecdbb200d2a002a818",
