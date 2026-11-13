@@ -87,7 +87,10 @@ def run_tool(argv, env, root, cwd=None, timeout=60):
     require_root_override(env, root)
     clean = clean_env()
     clean.update(env)
-    return subprocess.run([str(a) for a in argv], capture_output=True, text=True,
+    # encoding/errors explicit: text=True would decode with the locale codec
+    # (cp1252 on Windows) and crash on UTF-8 output (CI run 43362656119)
+    return subprocess.run([str(a) for a in argv], capture_output=True,
+                          encoding="utf-8", errors="replace",
                           env=clean, cwd=str(cwd or root), timeout=timeout)
 
 

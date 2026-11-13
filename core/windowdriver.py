@@ -123,7 +123,8 @@ def _terminal_app_driver(argv, cwd, receipt_dir, launch_id):
     shell_text = "cd %s && %s" % (_shell_quote(str(cwd)), " ".join(_shell_quote(a) for a in argv))
     script = ('tell application "Terminal"\n  activate\n  do script "%s"\nend tell'
               % applescript_quote(shell_text))
-    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    r = subprocess.run(["osascript", "-e", script], capture_output=True,
+                       encoding="utf-8", errors="replace")
     return r.returncode
 
 

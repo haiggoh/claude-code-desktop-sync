@@ -26,8 +26,9 @@ ENTRY = REPO / "bin" / "desktop-sync"
 
 def run_cli(args, root, stdin_text=None):
     env = harness.build_env(root)
-    r = subprocess.run([sys.executable, str(ENTRY)] + args, capture_output=True, text=True,
-                       input=stdin_text, env={k: v for k, v in env.items()}, cwd=str(root))
+    r = subprocess.run([sys.executable, str(ENTRY)] + args, capture_output=True,
+                       input=stdin_text, encoding="utf-8", errors="replace",
+                       env={k: v for k, v in env.items()}, cwd=str(root))
     return r
 
 
