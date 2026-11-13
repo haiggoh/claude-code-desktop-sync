@@ -94,6 +94,19 @@ class PortableLayoutTests(unittest.TestCase):
             self.assertIn(c["evidence_level"], EVIDENCE_LEVELS)
             self.assertEqual(set(c["surfaces"].keys()), {"chat", "cowork", "code"})
 
+    def test_skill_single_route_no_stderr_suppression(self):
+        # Phase-0 defect: the skill used `2>/dev/null ||` fallback to a second
+        # engine, hiding partial failure. One resolved route, no suppression.
+        skill = (REPO / "skills" / "desktop-sync" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertNotIn("2>/dev/null", skill)
+        self.assertNotIn("|| python3", skill)
+        self.assertIn("${CLAUDE_SKILL_DIR}/scripts/desktop-sync", skill)
+        port_skill = (REPO / "portable" / "skills" / "desktop-sync" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("${CLAUDE_SKILL_DIR}/scripts/desktop-sync", port_skill)
+        self.assertNotIn("../../bin/", port_skill)
+        self.assertTrue((REPO / "portable" / "skills" / "desktop-sync" / "scripts" / "desktop-sync").is_file())
+        self.assertTrue((REPO / "portable" / "core" / "cli.py").is_file())
+
     def test_zip_rooted_safe_and_deterministic(self):
         # dist/ is gitignored, so a fresh CI checkout has no zip — build into
         # temp dirs and assert on those; separately assert dist/ IS ignored.

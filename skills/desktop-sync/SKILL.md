@@ -16,23 +16,28 @@ between Claude Code (`~/.claude.json`) and Claude Desktop's config file, both di
 steps that can't be automated.
 
 ## Where things live
-- Engine (plugin install): `${CLAUDE_SKILL_DIR}/../../bin/sync_code_desktop.py`
+- v2 CLI (plugin install): `${CLAUDE_SKILL_DIR}/scripts/desktop-sync`
   (`${CLAUDE_SKILL_DIR}` IS substituted inside skill bodies; `${CLAUDE_PLUGIN_ROOT}` is NOT — only
   use the latter in hooks.)
-- Engine (standalone `install.py` install): `~/.claude/desktop-sync/sync_code_desktop.py`
-- Sync state (per-server snapshot): `~/.claude/desktop-sync/last-sync-state.json`
+- Legacy engine (kept for the standalone `install.py` route and the SessionStart hook):
+  `${CLAUDE_SKILL_DIR}/../../bin/sync_code_desktop.py` (plugin) or `~/.claude/desktop-sync/sync_code_desktop.py`
+- Sync state (per-server snapshot): `~/.claude/desktop-sync/last-sync-state.json` (v2: `last-sync-state-v2.json`)
 - Backups (timestamped, mode 600): `~/.claude/desktop-sync/backups/`
-- Full reference: the plugin's `docs/SYNC-REFERENCE.md`.
+- Full reference: the plugin's `docs/SYNC-REFERENCE.md` and `docs/PACKAGE-MAP.md`.
 
 ## Common actions
 
-**Sync now:** run the engine and relay its report. Try the plugin path first, then the standalone
-path — whichever exists on this machine:
+**Sync now:** run the v2 CLI's mcp command and relay its report. Exactly ONE route — resolve it,
+never fall back to a second engine (a swallowed stderr plus a fallback can hide partial failure):
 ```
-python3 "${CLAUDE_SKILL_DIR}/../../bin/sync_code_desktop.py" 2>/dev/null || python3 ~/.claude/desktop-sync/sync_code_desktop.py
+python3 "${CLAUDE_SKILL_DIR}/scripts/desktop-sync" mcp
 ```
+(stderr is never suppressed; a non-zero exit means the sync did not complete — say so.)
 It is silent when nothing changed. Any output tells you what synced and any manual steps. (Use
 `python` instead of `python3` on Windows if `python3` is not found.)
+
+**Menu / status / plan:** `python3 "${CLAUDE_SKILL_DIR}/scripts/desktop-sync" status` (read-only),
+`menu-spec` (pure JSON), or bare `menu` on a TTY for the numbered menu.
 
 **Show status / what is syncing:** read `~/.claude/desktop-sync/last-sync-state.json` and summarize:
 the `stdio` servers (auto-synced both ways), `remote` servers (need the manual Desktop connector),

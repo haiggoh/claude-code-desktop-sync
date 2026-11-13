@@ -44,7 +44,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SCHEMA = "haiggoh-portable-build/1"
 BUILDER = "scripts/build-portable.py"
-BUILDER_VERSION = "1.3.0"
+BUILDER_VERSION = "1.4.0"
 TRANSFORM_VERSION = "1"
 SOURCE_REPO = "https://github.com/haiggoh/claude-code-desktop-sync"
 
@@ -63,6 +63,24 @@ HOOK_OLD = "${CLAUDE_PLUGIN_ROOT}/bin/sync_code_desktop.py"
 HOOK_NEW = "${CLAUDE_PLUGIN_ROOT}/scripts/sync_code_desktop.py"
 SKILL_OLD = "${CLAUDE_SKILL_DIR}/../../bin/sync_code_desktop.py"
 SKILL_NEW = "${CLAUDE_SKILL_DIR}/scripts/sync_code_desktop.py"
+
+# Skill-invoked v2 CLI entry, generated into skills/desktop-sync/scripts/ so the
+# target-side route never touches a top-level bin/ (fact 1) and never needs
+# ${CLAUDE_PLUGIN_ROOT} inside a skill body.
+SKILL_ENTRY = '''#!/usr/bin/env python3
+"""desktop-sync (portable, skill-invoked) — resolves the plugin root from this
+file's location and runs the v2 CLI from the bundled core/ package."""
+import os
+import sys
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(_HERE))))
+
+from core import cli
+
+if __name__ == "__main__":
+    sys.exit(cli.main(sys.argv[1:]))
+'''
 
 
 def _rewrite_hooks(text):
@@ -107,6 +125,14 @@ COMPONENTS = [
      "evidence_level": "source-inspected",
      "surfaces": {"chat": True, "cowork": True, "code": True},
      "notes": "byte-identical engine copy for skill invocation; Chat can execute skill scripts (dated observation, §2)"},
+    {"path": "core/", "kind": "package", "adaptation_class": "qualified-adapter",
+     "evidence_level": "source-inspected",
+     "surfaces": {"chat": True, "cowork": True, "code": True},
+     "notes": "v2 CLI core, copied verbatim; host-management guards inside refuse non-host contexts (hostguard)"},
+    {"path": "skills/desktop-sync/scripts/desktop-sync", "kind": "script",
+     "adaptation_class": "mechanical", "evidence_level": "fixture-tested",
+     "surfaces": {"chat": True, "cowork": True, "code": True},
+     "notes": "generated skill-invoked v2 CLI entry; resolves plugin root from its own path"},
     {"path": "bin/", "kind": "bin", "adaptation_class": "unsupported",
      "evidence_level": "source-inspected",
      "surfaces": {"chat": False, "cowork": False, "code": True},
@@ -160,6 +186,11 @@ def build(out_dir, make_zip=True, dist_dir=None, commit=None):
     for dest, src in COPIES:
         data = (REPO / src).read_bytes()
         files[dest] = data
+    # the v2 core package rides along at portable root (imported by the skill
+    # entry; never symlinked, never escaping the root — fact 7)
+    for py in sorted((REPO / "core").glob("*.py")):
+        files["core/" + py.name] = py.read_bytes()
+    files["skills/desktop-sync/scripts/desktop-sync"] = SKILL_ENTRY.encode("utf-8")
     for dest, (src, fn) in REWRITES.items():
         text = (REPO / src).read_text(encoding="utf-8")
         new_text, _n = fn(text)

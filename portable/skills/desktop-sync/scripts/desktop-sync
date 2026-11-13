@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""desktop-sync (portable, skill-invoked) — resolves the plugin root from this
+file's location and runs the v2 CLI from the bundled core/ package."""
+import os
+import sys
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(_HERE))))
+
+from core import cli
+
+if __name__ == "__main__":
+    sys.exit(cli.main(sys.argv[1:]))
