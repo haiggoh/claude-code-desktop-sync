@@ -40,7 +40,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SCHEMA = "haiggoh-portable-build/1"
 BUILDER = "scripts/build-portable.py"
-BUILDER_VERSION = "1.2.0"
+BUILDER_VERSION = "1.3.0"
 TRANSFORM_VERSION = "1"
 SOURCE_REPO = "https://github.com/haiggoh/claude-code-desktop-sync"
 
@@ -118,6 +118,13 @@ def sha256_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def _git(args):
+    # -c safe.directory=* : CI containers run as root over a runner-owned
+    # checkout, which git otherwise refuses as "dubious ownership".
+    return subprocess.run(["git", "-c", "safe.directory=*", "-C", str(REPO)] + args,
+                          capture_output=True, text=True)
+
+
 def source_commit(explicit=None):
     """The commit the portable tree was built from.
 
@@ -128,10 +135,8 @@ def source_commit(explicit=None):
     """
     if explicit:
         return explicit
-    git = shutil.which("git")
-    if git:
-        r = subprocess.run([git, "-C", str(REPO), "rev-parse", "HEAD"],
-                           capture_output=True, text=True)
+    if shutil.which("git"):
+        r = _git(["rev-parse", "HEAD"])
         if r.returncode == 0:
             return r.stdout.strip()
     env_val = os.environ.get("CDS_SOURCE_COMMIT")
@@ -240,18 +245,19 @@ def check(commit=None):
         elif fresh[rel] != committed[rel]:
             problems.append("differs: %s" % rel)
     # provenance: the recorded source_commit must be a real commit of this repo.
-    # In a SHALLOW checkout (CI default fetch-depth=1) the parent commit is absent,
-    # so an unresolvable commit there is a note, not a failure.
+    # Skipped (with a note) when git cannot read the repo at all (missing binary,
+    # root container without safe.directory) or the checkout is SHALLOW (CI used
+    # to default to fetch-depth=1, where the parent commit is absent). Only a
+    # healthy, non-shallow repo with a genuinely missing commit is a failure.
     recorded = json.loads(committed["PORTABLE-BUILD.json"].decode("utf-8")).get("source_commit", "")
-    git = shutil.which("git")
-    if git and recorded and recorded != "unknown":
-        shallow = subprocess.run([git, "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
-                                 capture_output=True, text=True)
-        is_shallow = shallow.returncode == 0 and shallow.stdout.strip() == "true"
-        r = subprocess.run([git, "-C", str(REPO), "cat-file", "-e", recorded + "^{commit}"],
-                           capture_output=True)
-        if r.returncode != 0 and not is_shallow:
-            problems.append("PORTABLE-BUILD.json source_commit %s not found in repo history" % recorded)
+    if shutil.which("git") and recorded and recorded != "unknown":
+        if _git(["rev-parse", "HEAD"]).returncode != 0:
+            print("build-portable: note: git cannot read this repo; skipping "
+                  "source_commit provenance check", file=sys.stderr)
+        else:
+            is_shallow = _git(["rev-parse", "--is-shallow-repository"]).stdout.strip() == "true"
+            if _git(["cat-file", "-e", recorded + "^{commit}"]).returncode != 0 and not is_shallow:
+                problems.append("PORTABLE-BUILD.json source_commit %s not found in repo history" % recorded)
     if problems:
         print("STALE: committed portable/ differs from a fresh build:")
         for p in problems:
