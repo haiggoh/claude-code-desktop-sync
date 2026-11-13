@@ -240,6 +240,10 @@ def _tree(root):
         return None
     out = {}
     for p in sorted(root.rglob("*")):
+        # bytecode caches must never influence freshness (a local smoke run of
+        # a portable entry writes core/__pycache__ into the working tree)
+        if "__pycache__" in p.parts:
+            continue
         if p.is_file():
             out[str(p.relative_to(root))] = p.read_bytes()
     return out
