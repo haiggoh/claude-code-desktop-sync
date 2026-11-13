@@ -111,9 +111,13 @@ class PortableLayoutTests(unittest.TestCase):
                 self.assertFalse(any(n.startswith("/") or ".." in n.split("/") for n in names))
                 blobs.append(zips[0].read_bytes())
             self.assertEqual(blobs[0], blobs[1], "zip must be byte-deterministic across rebuilds")
-        r = subprocess.run(["git", "-C", str(REPO), "check-ignore", "dist"],
-                           capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, "dist/ must be gitignored")
+        # probe a FILE path: the `dist/` ignore rule is dir-only, which does not
+        # match the bare name when dist/ does not exist (fresh CI checkout).
+        # safe.directory=* covers root-run containers (dubious-ownership exit 128).
+        r = subprocess.run(["git", "-c", "safe.directory=*", "-C", str(REPO),
+                            "check-ignore", "dist/probe.zip"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, "dist/ must be gitignored (rc=%d, %s)"
+                         % (r.returncode, r.stderr.strip()))
 
 
 if __name__ == "__main__":

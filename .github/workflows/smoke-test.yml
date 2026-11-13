@@ -39,7 +39,11 @@ jobs:
     steps:
       # @v7 majors target Node 24 natively — clears the Node-20 deprecation
       # warning the @v4/@v5 majors triggered on current runners.
+      # full history so build-portable.py --check can verify PORTABLE-BUILD.json's
+      # recorded source_commit (the parent commit) exists — cheap on this small repo
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Set up Python (native jobs; the container job ships its own)
         if: ${{ matrix.setup_python }}
         uses: actions/setup-python@v7

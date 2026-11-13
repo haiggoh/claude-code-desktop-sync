@@ -40,7 +40,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SCHEMA = "haiggoh-portable-build/1"
 BUILDER = "scripts/build-portable.py"
-BUILDER_VERSION = "1.1.0"
+BUILDER_VERSION = "1.2.0"
 TRANSFORM_VERSION = "1"
 SOURCE_REPO = "https://github.com/haiggoh/claude-code-desktop-sync"
 
@@ -239,13 +239,18 @@ def check(commit=None):
                 problems.append("differs (besides source_commit): %s" % rel)
         elif fresh[rel] != committed[rel]:
             problems.append("differs: %s" % rel)
-    # provenance: the recorded source_commit must be a real commit of this repo
+    # provenance: the recorded source_commit must be a real commit of this repo.
+    # In a SHALLOW checkout (CI default fetch-depth=1) the parent commit is absent,
+    # so an unresolvable commit there is a note, not a failure.
     recorded = json.loads(committed["PORTABLE-BUILD.json"].decode("utf-8")).get("source_commit", "")
     git = shutil.which("git")
     if git and recorded and recorded != "unknown":
+        shallow = subprocess.run([git, "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
+                                 capture_output=True, text=True)
+        is_shallow = shallow.returncode == 0 and shallow.stdout.strip() == "true"
         r = subprocess.run([git, "-C", str(REPO), "cat-file", "-e", recorded + "^{commit}"],
                            capture_output=True)
-        if r.returncode != 0:
+        if r.returncode != 0 and not is_shallow:
             problems.append("PORTABLE-BUILD.json source_commit %s not found in repo history" % recorded)
     if problems:
         print("STALE: committed portable/ differs from a fresh build:")
