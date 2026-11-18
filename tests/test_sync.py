@@ -493,8 +493,122 @@ def test_legacy_state_preserved_on_3p_arrival(sb):
           "upgrade: 3P target received only the live servers")
 
 
+# ---------- 2.1.0: profiles + per-project (on-demand loading) ----------
+
+def test_profile_switch_roundtrip(sb):
+    print("\n[profiles: lean switch removes tagged servers from Desktop only; Code byte-identical; back to full re-adds]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {
+        "fs": {"command": "/usr/bin/true"},
+        "blender": {"command": "/usr/bin/blender", "x-cds-profile": "creative"},
+    }})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    sb.run()  # default active profile = full
+    check("blender" in read(std)["mcpServers"] and "blender" in read(threep)["mcpServers"],
+          "full: tagged server synced to both targets")
+    code_full = sb.code.read_bytes()
+    out = sb.run(["profile", "lean"])
+    check(sb.rc == 0, "profile lean: exit 0 (got %d)" % sb.rc)
+    check("blender" not in read(std)["mcpServers"] and "blender" not in read(threep)["mcpServers"],
+          "lean: tagged server removed from BOTH Desktop configs")
+    check("fs" in read(std)["mcpServers"] and "fs" in read(threep)["mcpServers"],
+          "lean: untagged server kept on Desktop")
+    check(sb.code.read_bytes() == code_full, "lean: ~/.claude.json byte-identical (hazard check)")
+    sync = Path(sb.env["CLAUDE_SYNC_HOME"])
+    for st in ("last-sync-state.json", "last-sync-state-3p.json"):
+        check("blender" not in read(sync / st).get("servers", {}),
+              "lean: %s drops the inactive server from the snapshot" % st)
+    out = sb.run(["profile"])
+    check("lean" in out, "profile: shows active profile 'lean' (got %r)" % out[:80])
+    sb.run(["profile", "full"])
+    check("blender" in read(std)["mcpServers"] and "blender" in read(threep)["mcpServers"],
+          "full again: tagged server re-added additively to both targets")
+    check(sb.code.read_bytes() == code_full, "full again: ~/.claude.json still byte-identical")
+    check(sb.run() == "", "converged: no-arg run silent after roundtrip")
+
+
+def test_profile_dry_run_writes_nothing(sb):
+    print("\n[profiles: --dry-run prints the plan and writes NOTHING]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"},
+                                   "blender": {"command": "/usr/bin/blender", "x-cds-profile": "creative"}}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    sb.run()
+    def snap():
+        out = {}
+        for p in sorted(Path(sb.env["CLAUDE_SYNC_HOME"]).parent.rglob("*")):
+            if p.is_file():
+                out[str(p)] = p.read_bytes()
+        return out
+    before = snap()
+    out = sb.run(["profile", "lean", "--dry-run"])
+    check(sb.rc == 0, "dry-run: exit 0 (got %d)" % sb.rc)
+    check("blender" in out and "lean" in out, "dry-run: names the planned change (got %r)" % out[:200])
+    check(snap() == before, "dry-run: zero filesystem writes (configs, state, active-profile)")
+    out = sb.run(["profile"])
+    check("full" in out, "dry-run: active profile still 'full' (got %r)" % out[:80])
+
+
+def test_project_move_then_sync(sb):
+    print("\n[project: move a server into <dir>/.mcp.json; next sync removes it from Desktop; Code stable after move]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    proj = Path(sb.env["CLAUDE_SYNC_HOME"]).parent / "proj"
+    proj.mkdir(parents=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"},
+                                   "blender": {"command": "/usr/bin/blender", "x-cds-profile": "creative"}},
+                    "other": {"keep": 1}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    sb.run()  # baseline: both servers synced to both targets
+    out = sb.run(["project", "move", "blender", str(proj)])
+    check(sb.rc == 0, "project move: exit 0 (got %d) out=%r" % (sb.rc, out[:120]))
+    code = read(sb.code)
+    check("blender" not in code["mcpServers"] and "fs" in code["mcpServers"]
+          and code.get("other") == {"keep": 1},
+          "project move: global Code config lost blender, kept fs + unrelated keys")
+    mcpjson = read(proj / ".mcp.json")
+    check(mcpjson["mcpServers"]["blender"]["command"] == "/usr/bin/blender",
+          "project move: .mcp.json created with the server entry")
+    backups = list((Path(sb.env["CLAUDE_SYNC_HOME"]) / "backups").glob("*claude.json.*.bak"))
+    check(len(backups) >= 1, "project move: ~/.claude.json backed up before rewrite")
+    code_after_move = sb.code.read_bytes()
+    sb.run()  # no-arg sync
+    check("blender" not in read(std)["mcpServers"] and "blender" not in read(threep)["mcpServers"],
+          "sync after move: blender removed from both Desktop configs (snapshot-driven)")
+    check("fs" in read(std)["mcpServers"], "sync after move: fs kept")
+    check(sb.code.read_bytes() == code_after_move, "sync after move: Code config byte-identical")
+    out = sb.run(["project", "move", "nosuch", str(proj)])
+    check(sb.rc == 2, "project move unknown server: exit 2 (got %d)" % sb.rc)
+    out = sb.run(["project", "move", "fs", str(proj / "missing")])
+    check(sb.rc == 2, "project move missing dir: exit 2 (got %d)" % sb.rc)
+    out = sb.run(["project", "show", str(proj)])
+    check("blender" in out, "project show: lists blender (got %r)" % out[:120])
+
+
+def test_cli_surface_2_1_0(sb):
+    print("\n[CLI: profile show default, --help lists subcommands, unknown exits 2 with no writes, hook route unchanged]")
+    write(sb.code, {"mcpServers": {}})
+    write(sb.desk, {"mcpServers": {}})
+    out = sb.run(["profile"])
+    check(sb.rc == 0 and "full" in out, "profile (no arg): shows default 'full' (rc=%d out=%r)" % (sb.rc, out[:80]))
+    out = sb.run(["--help"])
+    check(sb.rc == 0 and "profile" in out and "project" in out and "usage" in out.lower(),
+          "--help: documents subcommands")
+    syncdir = Path(sb.env["CLAUDE_SYNC_HOME"])
+    out = sb.run(["bogus"])
+    check(sb.rc == 2 and "usage" in out.lower(), "unknown subcommand: exit 2 + usage")
+    check(not syncdir.exists(), "unknown subcommand: no state written")
+
+
 def main():
-    for fn in (test_3p_first_sync_is_additive_never_deletes_code, test_delete_in_code_reaches_both_targets,
+    for fn in (test_profile_switch_roundtrip, test_profile_dry_run_writes_nothing,
+               test_project_move_then_sync, test_cli_surface_2_1_0,
+               test_3p_first_sync_is_additive_never_deletes_code, test_delete_in_code_reaches_both_targets,
                test_desktop_add_converges_across_targets, test_override_is_single_target,
                test_per_target_state_files, test_backup_names_are_per_target,
                test_manual_steps_header_keeps_target_label,
