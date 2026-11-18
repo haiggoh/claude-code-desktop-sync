@@ -574,8 +574,9 @@ def test_project_move_then_sync(sb):
     mcpjson = read(proj / ".mcp.json")
     check(mcpjson["mcpServers"]["blender"]["command"] == "/usr/bin/blender",
           "project move: .mcp.json created with the server entry")
-    backups = list((Path(sb.env["CLAUDE_SYNC_HOME"]) / "backups").glob("*claude.json.*.bak"))
-    check(len(backups) >= 1, "project move: ~/.claude.json backed up before rewrite")
+    backups = list((Path(sb.env["CLAUDE_SYNC_HOME"]) / "backups").glob(f"*{sb.code.name}.*.bak"))
+    check(len(backups) >= 1, "project move: Code config backed up before rewrite (got %r)"
+          % [p.name for p in (Path(sb.env["CLAUDE_SYNC_HOME"]) / "backups").iterdir()])
     code_after_move = sb.code.read_bytes()
     sb.run()  # no-arg sync
     check("blender" not in read(std)["mcpServers"] and "blender" not in read(threep)["mcpServers"],
