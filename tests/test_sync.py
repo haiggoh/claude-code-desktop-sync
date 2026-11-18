@@ -293,7 +293,124 @@ def test_hook_route_still_no_arg():
           "hook still invokes the engine with no args, got %r" % args)
 
 
+# ---------- multi-target discovery (2.0.3: standard + 3P Desktop) ----------
+
+def discovered_targets(sb):
+    """The two Desktop config paths the engine must discover under the sandbox (no override).
+    Mirrors docs claude.com/docs/third-party/claude-desktop/data-storage.md (app-data table)."""
+    tmp = Path(sb.env["CLAUDE_SYNC_HOME"]).parent
+    home = tmp / "home"
+    if sys.platform == "darwin":
+        base = home / "Library" / "Application Support"
+        return base / "Claude" / "claude_desktop_config.json", base / "Claude-3p" / "claude_desktop_config.json"
+    if os.name == "nt":
+        return (tmp / "appdata" / "Claude" / "claude_desktop_config.json",
+                tmp / "localappdata" / "Claude-3p" / "claude_desktop_config.json")
+    base = home / ".config"
+    return base / "Claude" / "claude_desktop_config.json", base / "Claude-3p" / "claude_desktop_config.json"
+
+
+def discovery_mode(sb):
+    """Drop the single-file override so the engine discovers targets itself."""
+    tmp = Path(sb.env["CLAUDE_SYNC_HOME"]).parent
+    del sb.env["CLAUDE_DESKTOP_CONFIG"]
+    sb.env["APPDATA"] = str(tmp / "appdata")
+    sb.env["LOCALAPPDATA"] = str(tmp / "localappdata")
+    std, threep = discovered_targets(sb)
+    std.parent.mkdir(parents=True, exist_ok=True)
+    return std, threep
+
+
+def test_3p_first_sync_is_additive_never_deletes_code(sb):
+    print("\n[3P target appearing next to a legacy snapshot: purely additive, Code config untouched]")
+    std, threep = discovery_mode(sb)
+    write(sb.code, {"mcpServers": {
+        "fs": {"command": "/usr/bin/true", "args": ["-x"]},
+        "gh": {"type": "http", "url": "https://ex/mcp", "headers": {"Authorization": "Bearer t"}},
+    }})
+    write(std, {"mcpServers": {}})
+    sb.run()                                      # legacy-style baseline against the standard target
+    check("fs" in read(std)["mcpServers"], "baseline: standard Desktop target got fs")
+    code_before = sb.code.read_bytes()
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(threep, {"preferences": {"keep": True}, "mcpServers": {}})   # empty 3P config, as on a real 3P Mac
+    out = sb.run()
+    check(sb.code.read_bytes() == code_before,
+          "hazard: ~/.claude.json byte-identical after first 3P sync (no 'deleted in Desktop' false positive)")
+    check("fs" in read(threep)["mcpServers"], "3P target received Code's stdio server")
+    check("gh" not in read(threep)["mcpServers"], "3P target: remote server NOT written")
+    check(read(threep).get("preferences", {}).get("keep") is True, "3P target: unrelated keys preserved")
+    check("3P" in out, "output names the 3P target (got %r)" % out[:200])
+
+
+def test_delete_in_code_reaches_both_targets(sb):
+    print("\n[two targets: a deletion in Code is removed from BOTH Desktop configs]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}, "keep": {"command": "/bin/sh"}}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    sb.run()
+    check("fs" in read(std)["mcpServers"] and "fs" in read(threep)["mcpServers"], "setup: fs on both targets")
+    code = read(sb.code)
+    del code["mcpServers"]["fs"]
+    write(sb.code, code)
+    sb.run()
+    check("fs" not in read(std)["mcpServers"], "delete: gone from standard target")
+    check("fs" not in read(threep)["mcpServers"], "delete: gone from 3P target")
+    check("keep" in read(std)["mcpServers"] and "keep" in read(threep)["mcpServers"], "delete: others kept")
+    check(sb.run() == "", "converged: next run is silent")
+
+
+def test_desktop_add_converges_across_targets(sb):
+    print("\n[a server added in the 3P Desktop reaches Code, then the standard target, within 2 runs]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {"only3p": {"command": "/usr/bin/true"}}})
+    sb.run()
+    check("only3p" in read(sb.code)["mcpServers"], "pull: 3P-added server reached Code in run 1")
+    sb.run()
+    check("only3p" in read(std)["mcpServers"], "converge: reached the standard target by run 2")
+    check(sb.run() == "", "converged: run 3 is silent")
+
+
+def test_override_is_single_target(sb):
+    print("\n[CLAUDE_DESKTOP_CONFIG override = exactly one target; discovered paths untouched]")
+    tmp = Path(sb.env["CLAUDE_SYNC_HOME"]).parent
+    sb.env["APPDATA"] = str(tmp / "appdata")
+    sb.env["LOCALAPPDATA"] = str(tmp / "localappdata")
+    std, threep = discovered_targets(sb)
+    for p in (std, threep):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        write(p, {"mcpServers": {}})
+    before = {p: p.read_bytes() for p in (std, threep)}
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
+    write(sb.desk, {"mcpServers": {}})
+    sb.run()
+    check("fs" in read(sb.desk)["mcpServers"], "override target synced")
+    check(all(p.read_bytes() == b for p, b in before.items()), "discovered targets untouched under override")
+
+
+def test_per_target_state_files(sb):
+    print("\n[state: standard target keeps last-sync-state.json (no migration); 3P has its own]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    sb.run()
+    sync = Path(sb.env["CLAUDE_SYNC_HOME"])
+    check("fs" in read(sync / "last-sync-state.json").get("servers", {}), "standard target state = legacy file")
+    check("fs" in read(sync / "last-sync-state-3p.json").get("servers", {}), "3P target state = its own file")
+
+
 def main():
+    for fn in (test_3p_first_sync_is_additive_never_deletes_code, test_delete_in_code_reaches_both_targets,
+               test_desktop_add_converges_across_targets, test_override_is_single_target,
+               test_per_target_state_files):
+        scenario(fn)
     for fn in (test_push_pull_remove, test_first_run_clash, test_two_sided_conflict,
                test_command_change_detected, test_remote_in_desktop, test_malformed_mcpservers,
                test_same_relative_launcher, test_type_conflict_preserves_connector, test_bom_tolerant,
