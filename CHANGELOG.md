@@ -22,6 +22,21 @@
   tool; what it syncs is the **Claude tab** (Cowork/Chat), which reads Desktop's own config file —
   standard and 3P builds alike.
 
+### Fixed — independent cross-family review dispatch (free-lane validator, 2026-11-18)
+- Backup filenames now carry the target label (e.g. `3P-Desktop-claude_desktop_config.json.<stamp>.bak`):
+  previously every target's config shares one basename and the stamp is only second-resolution, so two
+  targets writing in the same run silently overwrote each other's pre-run backup — the safety net broke
+  exactly in multi-target runs.
+- The manual-steps header keeps its `[target]` label (the `(NEW)` marker no longer clobbers it), the
+  Code-config note line is target-tagged, and the Code-derived Connectors/skills reminders print once per
+  run instead of once per target.
+- One broken target no longer aborts the remaining targets: each `_run` is wrapped per target (its
+  buffered output is flushed on error), and a valid-JSON-but-wrong-shape state file is treated as
+  corrupt (skip with a message) instead of crashing `reconcile`.
+- `release_lock()` only unlinks the lock file if it still holds our pid (a stale-reclaimed lock is left
+  alone); a relative `XDG_CONFIG_HOME` is ignored per the XDG spec.
+- New regression tests: per-target backup names, manual-header label + dedupe, wrong-shape-state isolation.
+
 ## 2.0.2
 
 ### Fixed

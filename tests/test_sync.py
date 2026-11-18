@@ -409,10 +409,61 @@ def test_per_target_state_files(sb):
           "3P target state = its own file (existence checked before reading)")
 
 
+def test_backup_names_are_per_target(sb):
+    print("\n[backups: targets writing in one run get distinct, target-labelled backup files]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    sb.run()
+    backups = sorted(p.name for p in (Path(sb.env["CLAUDE_SYNC_HOME"]) / "backups").iterdir())
+    check(len(backups) == 2 and len(set(backups)) == 2,
+          "backups: one distinct file per target (got %r)" % backups)
+    check(any(n.startswith("3P-Desktop-") for n in backups),
+          "backups: the 3P target's backup name carries the target label (got %r)" % backups)
+
+
+def test_manual_steps_header_keeps_target_label(sb):
+    print("\n[output: manual-steps header keeps the [target] label; Code-derived reminders print once per run]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"},
+                                   "gh": {"type": "http", "url": "https://ex/mcp"}}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    out = sb.run()
+    check("[Desktop] manual steps" in out, "manual header keeps the target label (got %r)" % out[-300:])
+    check("(NEW)manual" not in out, "no clobbered '(NEW)manual steps' header")
+    check(out.count("manual steps") == 1,
+          "Connectors/skills reminders deduped across targets (got %d headers)" % out.count("manual steps"))
+    check("Connectors" in out, "remote reminder still present")
+
+
+def test_wrong_shape_state_skips_target_but_not_others(sb):
+    print("\n[state: valid-JSON-wrong-shape state skips that target; the other target still syncs]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
+    write(std, {"mcpServers": {}})
+    write(threep, {"mcpServers": {}})
+    sync = Path(sb.env["CLAUDE_SYNC_HOME"])
+    sync.mkdir(parents=True, exist_ok=True)
+    write(sync / "last-sync-state-3p.json", {"servers": "oops"})
+    out = sb.run()
+    check("unreadable" in out and "last-sync-state-3p.json" in out,
+          "wrong-shape state reported as unreadable (got %r)" % out[-200:])
+    check("fs" in read(std)["mcpServers"], "standard target still synced")
+    check("fs" not in read(threep)["mcpServers"], "bad-state 3P target not written")
+    check("Traceback" not in out, "no crash")
+
+
 def main():
     for fn in (test_3p_first_sync_is_additive_never_deletes_code, test_delete_in_code_reaches_both_targets,
                test_desktop_add_converges_across_targets, test_override_is_single_target,
-               test_per_target_state_files):
+               test_per_target_state_files, test_backup_names_are_per_target,
+               test_manual_steps_header_keeps_target_label,
+               test_wrong_shape_state_skips_target_but_not_others):
         scenario(fn)
     for fn in (test_push_pull_remove, test_first_run_clash, test_two_sided_conflict,
                test_command_change_detected, test_remote_in_desktop, test_malformed_mcpservers,

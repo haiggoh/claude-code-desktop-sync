@@ -67,12 +67,18 @@ The snapshot records the relative→absolute launcher rewrite (e.g. `npx` → `/
 so that translation is never mistaken for an edit — while a genuine command change (e.g.
 `npx` → `/opt/custom/npx`, or `foo.cmd` → `foo.exe`) is detected and synced.
 
+**Wiped or reinstalled Desktop config:** if a target's config file is emptied while its snapshot still
+exists, every snapshotted server reads as "deleted in Desktop" and the deletion propagates to Code (and
+from there to the other targets). Restore from `~/.claude/desktop-sync/backups/` if that was not intended.
+
 Concurrent Claude Code sessions are serialized by an exclusive lock in `~/.claude/desktop-sync/`; if a
 sync is already running, the second invocation exits silently.
 
 ## Backups & undo
 - Every write is preceded by a timestamped backup in `~/.claude/desktop-sync/backups/` (mode `600`,
   because `~/.claude.json` may contain a plaintext token). Restore by copying the `.bak` back.
+  In multi-target runs the backup name carries the target label (e.g.
+  `3P-Desktop-claude_desktop_config.json.<stamp>.bak`) so same-second writes cannot overwrite each other.
 - `install.py` also backs up `settings.json` and `CLAUDE.md` before editing them.
 
 ## Disable / uninstall

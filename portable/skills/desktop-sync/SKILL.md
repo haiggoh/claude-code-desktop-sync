@@ -23,7 +23,7 @@ steps that can't be automated.
   `${CLAUDE_SKILL_DIR}/scripts/sync_code_desktop.py` (plugin) or `~/.claude/desktop-sync/sync_code_desktop.py`
 - Sync state (per-server snapshot, PER TARGET): `~/.claude/desktop-sync/last-sync-state.json` (standard
   Desktop build), `last-sync-state-3p.json` (3P build); v2: `last-sync-state-v2.json`
-- Backups (timestamped, mode 600): `~/.claude/desktop-sync/backups/`
+- Backups (timestamped, target-labelled in multi-target runs, mode 600): `~/.claude/desktop-sync/backups/`
 - Full reference: the plugin's `docs/SYNC-REFERENCE.md` and `docs/PACKAGE-MAP.md`.
 
 ## Common actions

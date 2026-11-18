@@ -136,7 +136,8 @@ def desktop_config_targets():
              SYNC_HOME / "last-sync-state-3p-msix.json"),
         ]
     base = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(base) if base else HOME / ".config"
+    # XDG spec: a relative XDG_CONFIG_HOME is invalid and must be ignored, not resolved vs CWD
+    base = Path(base) if base and Path(base).is_absolute() else HOME / ".config"
     return [
         ("Desktop", base / "Claude" / "claude_desktop_config.json", STATE_FILE),
         ("3P Desktop", base / "Claude-3p" / "claude_desktop_config.json",
@@ -164,12 +165,15 @@ def write_json(path, data):
     os.replace(tmp, path)
 
 
-def backup(path, stamp):
+def backup(path, stamp, tag=""):
     path = Path(path)
     if not path.exists():
         return None
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    dst = BACKUP_DIR / f"{path.name}.{stamp}.bak"
+    # tag keeps per-target backups distinct: every Desktop target's config shares the basename
+    # claude_desktop_config.json and the stamp is only second-resolution, so without the label
+    # two targets writing in the same run would overwrite each other's pre-run backup.
+    dst = BACKUP_DIR / f"{tag}{path.name}.{stamp}.bak"
     shutil.copy2(path, dst)
     try:
         os.chmod(dst, 0o600)  # may contain a plaintext token
@@ -248,9 +252,12 @@ def load_state(state_file):
     if not state_file.exists():
         return None, False
     try:
-        return load_json(state_file), False
+        state = load_json(state_file)
     except Exception:
         return None, True
+    if not isinstance(state, dict) or not isinstance(state.get("servers", {}), dict):
+        return None, True  # valid JSON but wrong shape: same unsafe-merge guard as unparseable
+    return state, False
 
 
 def save_state(state_file, servers, remote_names, skills):
@@ -300,6 +307,9 @@ def acquire_lock():
 
 def release_lock():
     try:
+        with open(LOCK_FILE, "r", encoding="utf-8") as f:
+            if f.read().strip() != str(os.getpid()):
+                return  # our lock went stale and another run reclaimed it; leave theirs alone
         os.unlink(LOCK_FILE)
     except OSError:
         pass
@@ -399,10 +409,13 @@ def _flush():
     out_lines.clear()  # per-target output: the next target must not re-print this one's lines
 
 
-def _run(label, desk_path, state_file):
+def _run(label, desk_path, state_file, shared_manual=True):
     """Sync ONE Desktop target. The Code config is re-loaded on every call -- a previous
-    target in the same run may have written it."""
+    target in the same run may have written it. shared_manual=True (first target only) emits
+    the Code-derived manual reminders once per run instead of once per target."""
     tag = f"[{label}] "
+    btag = "".join(c if (c.isalnum() or c in "-_") else "-" for c in label)
+    btag = f"{btag}-" if btag else ""
     code = load_json(CODE_CONFIG)
     desk = load_json(desk_path)
 
@@ -457,14 +470,14 @@ def _run(label, desk_path, state_file):
     stamp = time.strftime("%Y%m%d-%H%M%S")
     changed = False
     if new_code_srv != code_srv:
-        b = backup(CODE_CONFIG, stamp)
+        b = backup(CODE_CONFIG, stamp, btag)
         code["mcpServers"] = new_code_srv
         write_json(CODE_CONFIG, code)
         changed = True
         say(f"[claude-sync] {tag}updated Claude Code config  (backup: {b})")
-        say("  (MCP changes take effect in your NEXT Claude Code session.)")
+        say(f"  {tag}(MCP changes take effect in your NEXT Claude Code session.)")
     if new_desk_srv != desk_srv:
-        b = backup(desk_path, stamp)
+        b = backup(desk_path, stamp, btag)
         desk["mcpServers"] = new_desk_srv
         write_json(desk_path, desk)
         changed = True
@@ -493,10 +506,10 @@ def _run(label, desk_path, state_file):
     # ----- manual-step reminders -----
     manual = []
     new_remote = remote_names - prev_remote
-    if remote_names:
-        tag = " (NEW)" if new_remote else ""
+    if shared_manual and remote_names:
+        new_tag = " (NEW)" if new_remote else ""  # NB: not `tag` — that is the target label
         manual.append(
-            f"HTTP/auth MCP server(s) {sorted(remote_names)}{tag} cannot go in the Desktop config "
+            f"HTTP/auth MCP server(s) {sorted(remote_names)}{new_tag} cannot go in the Desktop config "
             "file. To use them in Desktop: Settings -> Connectors -> Add custom connector.")
     if unresolved:
         manual.append(
@@ -504,7 +517,7 @@ def _run(label, desk_path, state_file):
             "written to Desktop as-is and may fail to start there (Desktop has no shell PATH). Set an "
             "absolute 'command' for these servers.")
     new_skills = set(skills) - prev_skills
-    if new_skills and state is not None:
+    if shared_manual and new_skills and state is not None:
         manual.append(
             f"New skill(s) in Claude Code: {sorted(new_skills)}. Skills don't auto-sync -- add them "
             "in Claude Desktop's UI if you want them there too.")
@@ -564,8 +577,12 @@ def main():
     if not acquire_lock():
         return  # another session is already syncing
     try:
-        for label, desk_path, state_file in targets:
-            _run(label, desk_path, state_file)
+        for i, (label, desk_path, state_file) in enumerate(targets):
+            try:
+                _run(label, desk_path, state_file, shared_manual=(i == 0))
+            except Exception as e:  # one broken target must not abort the others; flush what it said
+                say(f"[claude-sync] [{label}] skipped (non-fatal): {e}")
+                _flush()
     finally:
         release_lock()
 

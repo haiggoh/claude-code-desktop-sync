@@ -98,7 +98,7 @@ Once installed there's nothing to do — it runs at each Code session start. To 
 Example output when you've added a server in Code:
 
 ```
-[claude-sync] [Desktop] updated Desktop config ~/Library/Application Support/Claude/claude_desktop_config.json  (backup: ~/.claude/desktop-sync/backups/claude_desktop_config.json.20260701-183531.bak)
+[claude-sync] [Desktop] updated Desktop config ~/Library/Application Support/Claude/claude_desktop_config.json  (backup: ~/.claude/desktop-sync/backups/Desktop-claude_desktop_config.json.20260701-183531.bak)
   [Desktop] + added to Desktop: my-new-server
 ```
 
