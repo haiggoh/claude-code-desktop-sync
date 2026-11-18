@@ -30,6 +30,11 @@ Behaviour:
     github connector) are reported as a manual "Connectors UI" step, never written to Desktop.
   - A name that is stdio on one side but a remote/other server on the other is a TYPE CONFLICT: both
     sides are left untouched and it is reported. (Prevents silently overwriting a connector + its token.)
+  - 2.1.0 on-demand loading: a server may carry "x-cds-profile": "<name>"; only the ACTIVE profile's
+    tagged servers are written to Desktop (default profile "full" = everything on, i.e. 2.0.x
+    behaviour). Inactive-profile servers are removed from the Desktop configs only, never from
+    Code, and are excluded from the snapshot so no merge path can delete them from Code.
+    Per-project servers live in <project>/.mcp.json and never enter the global sync.
 
 ---------------------------------------------------------------------------------------------------
 Design notes for maintainers (read before changing reconcile()):
@@ -73,6 +78,12 @@ BACKUP_DIR = SYNC_HOME / "backups"
 STATE_FILE = SYNC_HOME / "last-sync-state.json"
 LOCK_FILE = SYNC_HOME / ".sync.lock"
 LOCK_STALE_SECONDS = 120
+
+# 2.1.0 on-demand loading: servers may carry "x-cds-profile": "<name>"; only the active profile's
+# servers are synced to Desktop. The active profile lives in ACTIVE_PROFILE_FILE (default "full").
+ACTIVE_PROFILE_FILE = SYNC_HOME / "active-profile"
+DEFAULT_PROFILE = "full"
+PROFILE_MARKER = "x-cds-profile"
 
 # Extra directories to search for a launcher when it is not on PATH (Desktop has no shell PATH).
 COMMON_BIN_DIRS = [
@@ -270,6 +281,28 @@ def save_state(state_file, servers, remote_names, skills):
     })
 
 
+def load_active_profile():
+    try:
+        name = ACTIVE_PROFILE_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return DEFAULT_PROFILE
+    return name or DEFAULT_PROFILE
+
+
+def save_active_profile(name):
+    SYNC_HOME.mkdir(parents=True, exist_ok=True)
+    tmp = ACTIVE_PROFILE_FILE.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(name + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, ACTIVE_PROFILE_FILE)
+
+
+def profile_of(entry):
+    return entry.get(PROFILE_MARKER) if isinstance(entry, dict) else None
+
+
 def list_skills():
     try:
         return sorted(
@@ -409,10 +442,12 @@ def _flush():
     out_lines.clear()  # per-target output: the next target must not re-print this one's lines
 
 
-def _run(label, desk_path, state_file, shared_manual=True):
+def _run(label, desk_path, state_file, shared_manual=True, dry_run=False, profile=None):
     """Sync ONE Desktop target. The Code config is re-loaded on every call -- a previous
     target in the same run may have written it. shared_manual=True (first target only) emits
-    the Code-derived manual reminders once per run instead of once per target."""
+    the Code-derived manual reminders once per run instead of once per target. dry_run=True
+    prints the planned changes and writes NOTHING. profile overrides the active profile
+    (used by `profile <name> --dry-run`)."""
     tag = f"[{label}] "
     btag = "".join(c if (c.isalnum() or c in "-_") else "-" for c in label)
     btag = f"{btag}-" if btag else ""
@@ -438,8 +473,34 @@ def _run(label, desk_path, state_file, shared_manual=True):
         if is_stdio(code_srv[n]) != is_stdio(desk_srv[n])
     )
 
-    code_stdio = {n: e for n, e in stdio_of(code_srv).items() if n not in type_conflicts}
-    desk_stdio = {n: e for n, e in stdio_of(desk_srv).items() if n not in type_conflicts}
+    # ----- profile gating (2.1.0 on-demand loading) -----
+    # "full" (the default) is the wildcard profile: every tagged server is active, matching
+    # 2.0.x behaviour. Any other active profile gates: tagged servers of other profiles are
+    # inactive.
+    active = profile if profile else load_active_profile()
+
+    def tag_of(name):
+        e = code_srv.get(name)
+        if e is None:
+            e = desk_srv.get(name)
+        return profile_of(e)
+
+    inactive = []
+    for n in set(code_srv) | set(desk_srv):
+        t = tag_of(n)
+        if t is not None and t != active and active != DEFAULT_PROFILE:
+            inactive.append(n)
+    inactive.sort()
+    removed_inactive = [n for n in inactive if n in desk_srv]
+    desk_srv_orig = dict(desk_srv)  # change detection must compare against the PRE-strip content
+    if removed_inactive:
+        # Deliberate Desktop-side-only removal: inactive-profile servers leave the Desktop
+        # config but stay in Code. They are excluded from the reconcile inputs and from the
+        # rebuilt snapshot, so no merge path can read them as "deleted" and ever touch Code.
+        desk_srv = {n: e for n, e in desk_srv.items() if n not in inactive}
+
+    code_stdio = {n: e for n, e in stdio_of(code_srv).items() if n not in type_conflicts and n not in inactive}
+    desk_stdio = {n: e for n, e in stdio_of(desk_srv).items() if n not in type_conflicts and n not in inactive}
     remote_names = {n for n, e in code_srv.items() if is_remote(e)} - set(type_conflicts)
 
     state, corrupt = load_state(state_file)
@@ -470,18 +531,24 @@ def _run(label, desk_path, state_file, shared_manual=True):
     stamp = time.strftime("%Y%m%d-%H%M%S")
     changed = False
     if new_code_srv != code_srv:
-        b = backup(CODE_CONFIG, stamp, btag)
-        code["mcpServers"] = new_code_srv
-        write_json(CODE_CONFIG, code)
         changed = True
-        say(f"[claude-sync] {tag}updated Claude Code config  (backup: {b})")
-        say(f"  {tag}(MCP changes take effect in your NEXT Claude Code session.)")
-    if new_desk_srv != desk_srv:
-        b = backup(desk_path, stamp, btag)
-        desk["mcpServers"] = new_desk_srv
-        write_json(desk_path, desk)
+        if dry_run:
+            say(f"[claude-sync] {tag}DRY-RUN would update Claude Code config (no write)")
+        else:
+            b = backup(CODE_CONFIG, stamp, btag)
+            code["mcpServers"] = new_code_srv
+            write_json(CODE_CONFIG, code)
+            say(f"[claude-sync] {tag}updated Claude Code config  (backup: {b})")
+            say(f"  {tag}(MCP changes take effect in your NEXT Claude Code session.)")
+    if new_desk_srv != desk_srv_orig:
         changed = True
-        say(f"[claude-sync] {tag}updated Desktop config {desk_path}  (backup: {b})")
+        if dry_run:
+            say(f"[claude-sync] {tag}DRY-RUN would update Desktop config {desk_path} (no write)")
+        else:
+            b = backup(desk_path, stamp, btag)
+            desk["mcpServers"] = new_desk_srv
+            write_json(desk_path, desk)
+            say(f"[claude-sync] {tag}updated Desktop config {desk_path}  (backup: {b})")
 
     def line(label, names):
         if names:
@@ -494,6 +561,7 @@ def _run(label, desk_path, state_file, shared_manual=True):
         line("~ updated on Code", rep["updated_code"])
         line("- removed from Desktop", rep["removed_desk"])
         line("- removed from Code", rep["removed_code"])
+        line("- removed from Desktop (inactive profile '%s')" % active, removed_inactive)
 
     if rep["conflicts"]:
         say(f"[claude-sync] {tag}CONFLICT: these servers were changed differently on BOTH sides and were "
@@ -527,7 +595,8 @@ def _run(label, desk_path, state_file, shared_manual=True):
         for m in manual:
             say(f"  - {m}")
 
-    save_state(state_file, new_snapshot, remote_names, skills)
+    if not dry_run:
+        save_state(state_file, new_snapshot, remote_names, skills)
     _flush()
 
 
@@ -537,7 +606,19 @@ Usage:
   python3 sync_code_desktop.py            # run one sync now (the SessionStart hook route; no args)
   python3 sync_code_desktop.py --help     # print this help and exit 0 (never runs a sync)
 
-Unknown flags exit 2 with this usage on stderr. The no-argument route is the hook
+Commands (2.1.0, on-demand loading):
+  profile                             show the active profile (default: full)
+  profile <name>                      set the active profile, then sync: servers tagged
+                                      "x-cds-profile": "<name>" in the Code config are synced
+                                      to Desktop ONLY while that profile is active; switching
+                                      away removes them from the Desktop configs (never Code)
+  profile <name> --dry-run            print what would change; write NOTHING
+  project move <server> <dir>         move a server from the global Code config into <dir>/.mcp.json
+                                      (project scope in Claude Code; the global Desktop sync
+                                      drops it from the Desktop configs on the next run)
+  project show <dir>                  list the MCP servers in <dir>/.mcp.json
+
+Unknown commands/flags exit 2 with this usage on stderr. The no-argument route is the hook
 contract and is unchanged.
 
 Targets: with CLAUDE_DESKTOP_CONFIG set, exactly that one file is synced (legacy state file
@@ -558,7 +639,123 @@ def usage_text():
     for label, path, state in desktop_config_targets():
         mark = "" if path.exists() else "   (config file not present — skipped this run)"
         text += f"  - {label}: {path}   [state: {state.name}]{mark}\n"
+    text += f"\nActive profile: {load_active_profile()}\n"
     return text
+
+
+def run_sync(dry_run=False, profile=None):
+    """The no-arg hook route (and the body of `profile <name>`): sync all existing targets."""
+    if not CODE_CONFIG.exists():
+        return  # Claude Code config not present here -> nothing to sync
+    targets = [t for t in desktop_config_targets() if t[1].exists()]
+    if not targets:
+        return  # no Desktop config present -> nothing to sync
+    if dry_run:
+        for i, (label, desk_path, state_file) in enumerate(targets):
+            _run(label, desk_path, state_file, shared_manual=(i == 0), dry_run=True, profile=profile)
+        return
+    if not acquire_lock():
+        return  # another session is already syncing
+    try:
+        for i, (label, desk_path, state_file) in enumerate(targets):
+            try:
+                _run(label, desk_path, state_file, shared_manual=(i == 0), profile=profile)
+            except Exception as e:  # one broken target must not abort the others; flush what it said
+                say(f"[claude-sync] [{label}] skipped (non-fatal): {e}")
+                _flush()
+    finally:
+        release_lock()
+
+
+def cmd_profile(args):
+    dry = "--dry-run" in args
+    names = [a for a in args if a != "--dry-run"]
+    if len(names) > 1 or (names and names[0].startswith("-")):
+        sys.stderr.write("usage: sync_code_desktop.py profile [<name>] [--dry-run]\n")
+        sys.exit(2)
+    if not names:
+        say(f"[claude-sync] active profile: {load_active_profile()}")
+        _flush()
+        return
+    name = names[0]
+    if not name or "/" in name or "\\" in name:
+        sys.stderr.write("profile name must be a plain word (no path separators)\n")
+        sys.exit(2)
+    if dry:
+        say(f"[claude-sync] DRY-RUN: would set active profile to '{name}', then sync:")
+        run_sync(dry_run=True, profile=name)
+        return
+    save_active_profile(name)
+    say(f"[claude-sync] active profile set to '{name}'")
+    run_sync()
+
+
+def cmd_project(args):
+    usage = "usage: sync_code_desktop.py project <move <server> <dir> | show <dir>>\n"
+    if not args:
+        sys.stderr.write(usage)
+        sys.exit(2)
+    sub = args[0]
+    if sub == "show" and len(args) == 2:
+        p = Path(args[1]) / ".mcp.json"
+        if not p.exists():
+            say(f"[claude-sync] project {args[1]}: no .mcp.json")
+            _flush()
+            return
+        data = load_json(p)
+        ms = data.get("mcpServers", {}) if isinstance(data, dict) else {}
+        names = sorted(ms) if isinstance(ms, dict) else []
+        say(f"[claude-sync] project {args[1]}: MCP servers: {', '.join(names) if names else 'none'}")
+        for n in names:
+            t = profile_of(ms[n])
+            if t:
+                say(f"  - {n} (profile: {t})")
+        _flush()
+        return
+    if sub == "move" and len(args) == 3:
+        server, dirpath = args[1], Path(args[2])
+        if not dirpath.is_dir():
+            sys.stderr.write(f"project dir does not exist: {dirpath}\n")
+            sys.exit(2)
+        if not CODE_CONFIG.exists():
+            sys.stderr.write("no Claude Code config present\n")
+            sys.exit(2)
+        if not acquire_lock():
+            sys.stderr.write("another sync is running; try again\n")
+            sys.exit(2)
+        try:
+            code = load_json(CODE_CONFIG)
+            srv = code.get("mcpServers", {})
+            if not isinstance(srv, dict) or server not in srv:
+                sys.stderr.write(f"no such server in {CODE_CONFIG.name}: {server}\n")
+                sys.exit(2)
+            entry = srv.pop(server)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            b = backup(CODE_CONFIG, stamp, "cli-")
+            code["mcpServers"] = srv
+            write_json(CODE_CONFIG, code)
+            say(f"[claude-sync] moved '{server}' out of {CODE_CONFIG.name} (backup: {b})")
+            p = dirpath / ".mcp.json"
+            data = load_json(p) if p.exists() else {}
+            if not isinstance(data, dict):
+                data = {}
+            ms = data.get("mcpServers", {})
+            if not isinstance(ms, dict):
+                ms = {}
+            ms[server] = entry
+            data["mcpServers"] = ms
+            if p.exists():
+                b2 = backup(p, stamp, "cli-")
+                say(f"[claude-sync] (backup of existing .mcp.json: {b2})")
+            write_json(p, data)
+            say(f"[claude-sync] wrote {p} — project-scoped; the global Desktop sync drops it "
+                f"from the Desktop configs on the next run")
+        finally:
+            release_lock()
+        _flush()
+        return
+    sys.stderr.write(usage)
+    sys.exit(2)
 
 
 def main():
@@ -567,24 +764,15 @@ def main():
         if argv in (["--help"], ["-h"]):
             sys.stdout.write(usage_text())
             return
+        if argv[0] == "profile":
+            cmd_profile(argv[1:])
+            return
+        if argv[0] == "project":
+            cmd_project(argv[1:])
+            return
         sys.stderr.write("sync_code_desktop.py: unknown argument %r\n%s" % (argv[0], usage_text()))
         sys.exit(2)
-    if not CODE_CONFIG.exists():
-        return  # Claude Code config not present here -> nothing to sync
-    targets = [t for t in desktop_config_targets() if t[1].exists()]
-    if not targets:
-        return  # no Desktop config present -> nothing to sync
-    if not acquire_lock():
-        return  # another session is already syncing
-    try:
-        for i, (label, desk_path, state_file) in enumerate(targets):
-            try:
-                _run(label, desk_path, state_file, shared_manual=(i == 0))
-            except Exception as e:  # one broken target must not abort the others; flush what it said
-                say(f"[claude-sync] [{label}] skipped (non-fatal): {e}")
-                _flush()
-    finally:
-        release_lock()
+    run_sync()
 
 
 if __name__ == "__main__":

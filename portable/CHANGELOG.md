@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.1.0
+
+### Added — on-demand MCP loading: profiles and per-project scope
+- Servers in the Code config may carry `"x-cds-profile": "<name>"`. Only the ACTIVE profile's
+  tagged servers are written to the Desktop configs. The active profile lives in
+  `~/.claude/desktop-sync/active-profile` (default `full` = everything on, i.e. 2.0.x behaviour,
+  fully backward compatible). Switch with `sync_code_desktop.py profile <name>`;
+  `profile` alone shows the active one; `profile <name> --dry-run` prints the plan and writes
+  NOTHING. Profile names are free-form — align them with the Code launch profiles
+  (`~/.claude/launch-profiles/lean-cloud-general.json` → `profile lean-cloud`).
+- Switching profiles removes now-inactive servers from the Desktop configs ONLY — never from
+  `~/.claude.json` — and drops them from the per-target snapshots, so the three-way merge can
+  never read them as "deleted" and touch Code (regression-tested with a byte-identity check;
+  mutation-checked: keeping them in the snapshot goes RED).
+- `sync_code_desktop.py project move <server> <dir>` moves a server from the global Code config
+  into `<dir>/.mcp.json` (Claude Code project scope; config backed up + atomic write). The next
+  global sync removes it from the Desktop configs via the normal snapshot path.
+  `project show <dir>` lists a project's servers.
+- Note: whether the Cowork VM honours a `.mcp.json` inside an attached folder is undocumented —
+  probe in Desktop before relying on it (Settings → Developer → Edit Config shows the global file).
+
 ## 2.0.3
 
 ### Added — third-party ("3P") Claude Desktop builds; multi-target sync

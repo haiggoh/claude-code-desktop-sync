@@ -102,6 +102,21 @@ Example output when you've added a server in Code:
   [Desktop] + added to Desktop: my-new-server
 ```
 
+## On-demand loading: profiles & per-project (2.1.0)
+
+Desktop reads its MCP config file at startup and has no "lean launch" flag like Code's
+`--strict-mcp-config`, so 2.1.0 adds two switches at the config level:
+
+- **Profiles.** Tag a server in `~/.claude.json` with `"x-cds-profile": "creative"`, then run the
+  engine's `profile lean` — the Desktop configs keep only untagged servers plus the active
+  profile's servers; switching back to `full` re-adds them. A profile switch never modifies
+  `~/.claude.json` (byte-identical, regression-tested). Preview with `profile <name> --dry-run`
+  (zero writes). Align profile names with your Code launch profiles
+  (`~/.claude/launch-profiles/lean-cloud-general.json` → `profile lean-cloud`).
+- **Per-project.** `project move blender ~/ClaudeWorkspace/my-project` moves the server into that
+  project's `.mcp.json`, so only sessions in that project load it in Claude Code. Whether the
+  Cowork VM honours a `.mcp.json` in an attached folder is undocumented — probe in Desktop.
+
 ## Conflict handling
 
 Reconciliation is **per-server and content-based** (a snapshot of the last-synced value on each side),

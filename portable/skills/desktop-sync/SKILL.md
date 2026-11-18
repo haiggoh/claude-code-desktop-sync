@@ -23,6 +23,7 @@ steps that can't be automated.
   `${CLAUDE_SKILL_DIR}/scripts/sync_code_desktop.py` (plugin) or `~/.claude/desktop-sync/sync_code_desktop.py`
 - Sync state (per-server snapshot, PER TARGET): `~/.claude/desktop-sync/last-sync-state.json` (standard
   Desktop build), `last-sync-state-3p.json` (3P build); v2: `last-sync-state-v2.json`
+- Active profile (2.1.0): `~/.claude/desktop-sync/active-profile` (default `full`)
 - Backups (timestamped, target-labelled in multi-target runs, mode 600): `~/.claude/desktop-sync/backups/`
 - Full reference: the plugin's `docs/SYNC-REFERENCE.md` and `docs/PACKAGE-MAP.md`.
 
@@ -36,6 +37,14 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/desktop-sync" mcp
 (stderr is never suppressed; a non-zero exit means the sync did not complete — say so.)
 It is silent when nothing changed. Any output tells you what synced and any manual steps. (Use
 `python` instead of `python3` on Windows if `python3` is not found.)
+
+**Profiles (2.1.0, on-demand Desktop MCPs):** run the engine with subcommands —
+`profile` (show active), `profile <name>` (switch + sync; affects Desktop configs only, never the
+Code config), `profile <name> --dry-run` (preview, zero writes). Servers tagged
+`"x-cds-profile": "<name>"` in `~/.claude.json` sync only while that profile is active.
+**Per-project:** `project move <server> <dir>` moves a server into `<dir>/.mcp.json`;
+`project show <dir>` lists a project's servers. Engine path: `${CLAUDE_SKILL_DIR}/scripts/sync_code_desktop.py`
+(plugin) or `~/.claude/desktop-sync/sync_code_desktop.py` (standalone).
 
 **Menu / status / plan:** `python3 "${CLAUDE_SKILL_DIR}/scripts/desktop-sync" status` (read-only),
 `menu-spec` (pure JSON), or bare `menu` on a TTY for the numbered menu.

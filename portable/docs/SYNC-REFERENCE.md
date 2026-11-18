@@ -30,6 +30,22 @@
 the standard and 3P builds. Each run syncs every discovered target whose config file exists (one lock;
 the Code config is re-loaded per target); `CLAUDE_DESKTOP_CONFIG` pins a single target.
 
+## On-demand loading (2.1.0): profiles & per-project
+
+- **Profile tag:** a server entry in `~/.claude.json` may carry `"x-cds-profile": "<name>"`. Only the
+  active profile's tagged servers are written to the Desktop configs. Active profile:
+  `~/.claude/desktop-sync/active-profile` (default `full` = all servers on, i.e. 2.0.x behaviour).
+  Commands: `profile` (show), `profile <name>` (switch + sync), `profile <name> --dry-run`
+  (prints the plan, writes nothing). Switching removes inactive servers from the DESKTOP configs
+  only — never from Code — and drops them from the per-target snapshots, so the merge can never
+  delete them from Code.
+- **Per-project:** `project move <server> <dir>` moves a server into `<dir>/.mcp.json` (Claude Code
+  project scope; the global config is backed up + atomically rewritten). It then leaves the global
+  config, so the next global sync removes it from the Desktop configs via the normal snapshot path.
+  `project show <dir>` lists a project's servers. Whether the Cowork VM honours a `.mcp.json` inside an
+  attached folder is undocumented — probe in Desktop (Settings → Developer → Edit Config shows the
+  global file only).
+
 ## What syncs, what doesn't
 
 | Thing | Status | Mechanism |
