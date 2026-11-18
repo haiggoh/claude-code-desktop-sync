@@ -629,19 +629,21 @@ def test_cli_surface_2_1_0(sb):
 
 
 def test_profile_desktop_only_tagged_server(sb):
-    print("\n[profiles: a tagged server living only in a Desktop config is removed on switch, kept in Code]")
+    print("\n[profiles: a tagged server living ONLY in a Desktop config (remote type, never pulled into Code) is removed on switch]")
     std, threep = discovery_mode(sb)
     threep.parent.mkdir(parents=True, exist_ok=True)
     write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
-    write(std, {"mcpServers": {"deskonly": {"command": "/usr/bin/true", "x-cds-profile": "creative"}}})
+    # remote-type on the Desktop side: never enters Code, but still profile-gated on Desktop
+    write(std, {"mcpServers": {"deskonly": {"type": "http", "url": "https://x",
+                                            "x-cds-profile": "creative"}}})
     write(threep, {"mcpServers": {}})
-    sb.run()  # full: deskonly is active -> pulled into Code, marker and all
-    check("deskonly" in read(sb.code)["mcpServers"],
-          "setup: desktop-only tagged server pulled into Code under 'full'")
+    sb.run()  # full
+    check("deskonly" in read(std)["mcpServers"], "setup: desktop-only tagged server kept under 'full'")
+    check("deskonly" not in read(sb.code)["mcpServers"], "setup: remote desktop server not pulled into Code")
     sb.run(["profile", "lean"])
     check("deskonly" not in read(std)["mcpServers"] and "deskonly" not in read(threep)["mcpServers"],
           "lean: desktop-only tagged server removed from BOTH Desktop configs")
-    check("deskonly" in read(sb.code)["mcpServers"], "lean: still present in Code")
+    check("deskonly" not in read(sb.code)["mcpServers"], "lean: never entered Code")
 
 
 def main():
