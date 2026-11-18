@@ -520,6 +520,12 @@ def test_profile_switch_roundtrip(sb):
     for st in ("last-sync-state.json", "last-sync-state-3p.json"):
         check("blender" not in read(sync / st).get("servers", {}),
               "lean: %s drops the inactive server from the snapshot" % st)
+    code_under_lean = sb.code.read_bytes()
+    sb.run()  # bare hook-route sync while a non-default profile is active
+    check("blender" not in read(std)["mcpServers"] and "blender" not in read(threep)["mcpServers"],
+          "lean persists: bare no-arg sync keeps tagged servers out of Desktop")
+    check(sb.code.read_bytes() == code_under_lean,
+          "lean persists: bare no-arg sync leaves Code byte-identical")
     out = sb.run(["profile"])
     check("lean" in out, "profile: shows active profile 'lean' (got %r)" % out[:80])
     sb.run(["profile", "full"])
@@ -548,6 +554,8 @@ def test_profile_dry_run_writes_nothing(sb):
     out = sb.run(["profile", "lean", "--dry-run"])
     check(sb.rc == 0, "dry-run: exit 0 (got %d)" % sb.rc)
     check("blender" in out and "lean" in out, "dry-run: names the planned change (got %r)" % out[:200])
+    check(out.count("inactive profile") == 2,
+          "dry-run: plan covers BOTH targets (got %d mention(s))" % out.count("inactive profile"))
     check(snap() == before, "dry-run: zero filesystem writes (configs, state, active-profile)")
     out = sb.run(["profile"])
     check("full" in out, "dry-run: active profile still 'full' (got %r)" % out[:80])
@@ -559,6 +567,7 @@ def test_project_move_then_sync(sb):
     threep.parent.mkdir(parents=True, exist_ok=True)
     proj = Path(sb.env["CLAUDE_SYNC_HOME"]).parent / "proj"
     proj.mkdir(parents=True)
+    write(proj / ".mcp.json", {"mcpServers": {"existing": {"command": "/bin/echo"}}})
     write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"},
                                    "blender": {"command": "/usr/bin/blender", "x-cds-profile": "creative"}},
                     "other": {"keep": 1}})
@@ -574,9 +583,14 @@ def test_project_move_then_sync(sb):
     mcpjson = read(proj / ".mcp.json")
     check(mcpjson["mcpServers"]["blender"]["command"] == "/usr/bin/blender",
           "project move: .mcp.json created with the server entry")
+    check(mcpjson["mcpServers"].get("existing") == {"command": "/bin/echo"},
+          "project move: existing .mcp.json entries preserved")
+    mcpjson_after_move = (proj / ".mcp.json").read_bytes()
     backups = list((Path(sb.env["CLAUDE_SYNC_HOME"]) / "backups").glob(f"*{sb.code.name}.*.bak"))
     check(len(backups) >= 1, "project move: Code config backed up before rewrite (got %r)"
           % [p.name for p in (Path(sb.env["CLAUDE_SYNC_HOME"]) / "backups").iterdir()])
+    check(any("blender" in read(p)["mcpServers"] for p in backups),
+          "project move: backup holds the PRE-move config (blender still present in the backup)")
     code_after_move = sb.code.read_bytes()
     sb.run()  # no-arg sync
     check("blender" not in read(std)["mcpServers"] and "blender" not in read(threep)["mcpServers"],
@@ -587,6 +601,10 @@ def test_project_move_then_sync(sb):
     check(sb.rc == 2, "project move unknown server: exit 2 (got %d)" % sb.rc)
     out = sb.run(["project", "move", "fs", str(proj / "missing")])
     check(sb.rc == 2, "project move missing dir: exit 2 (got %d)" % sb.rc)
+    check(sb.code.read_bytes() == code_after_move, "error cases: Code config untouched by failed moves")
+    check((proj / ".mcp.json").read_bytes() == mcpjson_after_move,
+          "error cases: .mcp.json untouched by failed moves")
+    check(not (proj / "missing").exists(), "error cases: missing dir not created")
     out = sb.run(["project", "show", str(proj)])
     check("blender" in out, "project show: lists blender (got %r)" % out[:120])
 
@@ -604,10 +622,31 @@ def test_cli_surface_2_1_0(sb):
     out = sb.run(["bogus"])
     check(sb.rc == 2 and "usage" in out.lower(), "unknown subcommand: exit 2 + usage")
     check(not syncdir.exists(), "unknown subcommand: no state written")
+    out = sb.run(["profile", "../evil"])
+    check(sb.rc == 2, "profile name validation: path-like name exits 2 (got %d)" % sb.rc)
+    check(not (syncdir / "active-profile").exists(),
+          "profile name validation: invalid name not persisted, no state written")
+
+
+def test_profile_desktop_only_tagged_server(sb):
+    print("\n[profiles: a tagged server living only in a Desktop config is removed on switch, kept in Code]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
+    write(std, {"mcpServers": {"deskonly": {"command": "/usr/bin/true", "x-cds-profile": "creative"}}})
+    write(threep, {"mcpServers": {}})
+    sb.run()  # full: deskonly is active -> pulled into Code, marker and all
+    check("deskonly" in read(sb.code)["mcpServers"],
+          "setup: desktop-only tagged server pulled into Code under 'full'")
+    sb.run(["profile", "lean"])
+    check("deskonly" not in read(std)["mcpServers"] and "deskonly" not in read(threep)["mcpServers"],
+          "lean: desktop-only tagged server removed from BOTH Desktop configs")
+    check("deskonly" in read(sb.code)["mcpServers"], "lean: still present in Code")
 
 
 def main():
     for fn in (test_profile_switch_roundtrip, test_profile_dry_run_writes_nothing,
+               test_profile_desktop_only_tagged_server,
                test_project_move_then_sync, test_cli_surface_2_1_0,
                test_3p_first_sync_is_additive_never_deletes_code, test_delete_in_code_reaches_both_targets,
                test_desktop_add_converges_across_targets, test_override_is_single_target,
