@@ -1,15 +1,15 @@
 {
   "schema": "haiggoh-portable-build/1",
   "source_repo": "https://github.com/haiggoh/claude-code-desktop-sync",
-  "source_commit": "c8adc5548c26176e6a869a228a2fea5ce4019d33",
+  "source_commit": "5b38a279073e4d59110387832cefabba2f8544c7",
   "builder": "scripts/build-portable.py",
   "builder_version": "1.4.0",
   "transform_version": "1",
   "files": {
-    ".claude-plugin/plugin.json": "fd9c3843f40bbd9c8d94ad779d2473d5e5e428dde5e4d193d01ddea7ce8de98e",
-    "CHANGELOG.md": "2f77b0cf81d05cbe407b588fd0b0828a90fa3bf8aeda7412062e36093ab2d7d3",
+    ".claude-plugin/plugin.json": "6064f987b57c6a989e3bf6663bc0d2e29bac2d862a3db10fc7247ab603e28b81",
+    "CHANGELOG.md": "e15f0b646f633486fea8cc5672e30305ae2408407a6097381bf75f1503dbd253",
     "LICENSE": "9e0a2ce0a04bf4026e3adb0ac631dd1b46024a397da4e8eab287e77eda935a15",
-    "README.md": "02086125ec19c768a89013520b092a77061eb71484e0902844155ef90e0132bc",
+    "README.md": "16cf452efa7a499b391f94e3e68c40c2f153af9b7e78f123a40c12cfe3a49aab",
     "core/__init__.py": "7c534a922e92818bb286835092df01468fa72e3a6c40b0ecdbb200d2a002a818",
     "core/automodes.py": "3d97f8279af938fc140530d7266b19574e056f1abf76124482900422f88d120d",
     "core/builder.py": "cb25cc7313cc79033ed5dc79ea37f0bc42b146c09f1e55110f58c59512b63d94",
@@ -27,12 +27,12 @@
     "core/records.py": "84471ae43b1d203ef7b0fc61f55ca08b8934b71983c961d274f5a1db834c3c4b",
     "core/state.py": "bd86f8ed8d5afc0b824ce8fcd06b26d7b92c03a22f783093b3d750e3d109c686",
     "core/windowdriver.py": "7ef450d7f1c83b041b87e5b86567a2b6430f7b581939cd62778468e0d65b59de",
-    "docs/SYNC-REFERENCE.md": "06c3868e51a13cde3d39d179a4bc045aca0c0303444b27a835b7e3bf7c34e8b7",
+    "docs/SYNC-REFERENCE.md": "57e0877bf17b315a651225c94c401a0710d95bc7039f5f648e94afb11222e656",
     "hooks/hooks.json": "f9580bf3776f515c58a804393546a47ede2fcfbfe7b93da649536ffe4cc4090a",
-    "scripts/sync_code_desktop.py": "106fd0f0f3d60d6572ed6fd276177722e4a841afa97d79600c9cff835e246a1c",
-    "skills/desktop-sync/SKILL.md": "f544d5025c2c5e25f76792b39e6f5c52f2dbc9bd96626fef4b66b2eed64588c8",
+    "scripts/sync_code_desktop.py": "9b92b6dd7d059717e1f5fdc783364ae553c76a7309847196aaa30353108a25a8",
+    "skills/desktop-sync/SKILL.md": "e4bfd7356b1927b47eb9d54ba265b0772960a80accaef435265fffeb038476c3",
     "skills/desktop-sync/scripts/desktop-sync": "61b2ac43e4761be69b22ef6cfabd32bace7c89a96cacf831b72f1c59d20d66df",
-    "skills/desktop-sync/scripts/sync_code_desktop.py": "106fd0f0f3d60d6572ed6fd276177722e4a841afa97d79600c9cff835e246a1c"
+    "skills/desktop-sync/scripts/sync_code_desktop.py": "9b92b6dd7d059717e1f5fdc783364ae553c76a7309847196aaa30353108a25a8"
   },
   "components": [
     {

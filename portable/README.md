@@ -17,6 +17,10 @@ It installs on a **vanilla** Claude Code + Claude Desktop setup, merges cleanly 
   *can't* live in the Desktop config file, and prints the one-time manual step (Desktop → Connectors UI).
 - ❌ **Clearly documents what is not syncable** — skills, memory, settings, extensions, and
   sessions/conversations live in separate stores the two apps don't share.
+- 🖥️ **Covers both Desktop builds and tabs** — the sync target is Desktop's **Claude tab**
+  (Cowork/Chat), which reads Desktop's own config file: the standard build (`Claude/`) and
+  third-party "3P" builds (`Claude-3p/`, incl. the Windows MSIX path), each with its own sync
+  snapshot. Desktop's **Code tab** reads `~/.claude.json` natively and needs nothing from this tool.
 
 Runs automatically via a Claude Code **SessionStart hook**, and stays silent unless something changed.
 
@@ -94,8 +98,8 @@ Once installed there's nothing to do — it runs at each Code session start. To 
 Example output when you've added a server in Code:
 
 ```
-[claude-sync] updated Claude Desktop config  (backup: ~/.claude/desktop-sync/backups/claude_desktop_config.json.20260701-183531.bak)
-  + added to Desktop: my-new-server
+[claude-sync] [Desktop] updated Desktop config ~/Library/Application Support/Claude/claude_desktop_config.json  (backup: ~/.claude/desktop-sync/backups/claude_desktop_config.json.20260701-183531.bak)
+  [Desktop] + added to Desktop: my-new-server
 ```
 
 ## Conflict handling

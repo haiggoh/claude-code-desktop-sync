@@ -402,8 +402,11 @@ def test_per_target_state_files(sb):
     write(threep, {"mcpServers": {}})
     sb.run()
     sync = Path(sb.env["CLAUDE_SYNC_HOME"])
-    check("fs" in read(sync / "last-sync-state.json").get("servers", {}), "standard target state = legacy file")
-    check("fs" in read(sync / "last-sync-state-3p.json").get("servers", {}), "3P target state = its own file")
+    legacy_state, threep_state = sync / "last-sync-state.json", sync / "last-sync-state-3p.json"
+    check(legacy_state.exists() and "fs" in read(legacy_state).get("servers", {}),
+          "standard target state = legacy file")
+    check(threep_state.exists() and "fs" in read(threep_state).get("servers", {}),
+          "3P target state = its own file (existence checked before reading)")
 
 
 def main():

@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.0.3
+
+### Added — third-party ("3P") Claude Desktop builds; multi-target sync
+- The engine now discovers every Desktop config target whose file exists and syncs each in one
+  run under one lock: the standard build (`Claude/` per platform) **and** 3P builds (`Claude-3p/` —
+  macOS `~/Library/Application Support/Claude-3p/`, Windows `%LOCALAPPDATA%\Claude-3p\` incl. the
+  MSIX package path, Linux `$XDG_CONFIG_HOME/Claude-3p/`). **Policy:** sync every EXISTING
+  candidate, so both Desktop modes stay consistent; `CLAUDE_DESKTOP_CONFIG` still pins exactly one
+  target. `--help` lists the discovered targets on this machine.
+- Each target keeps its OWN snapshot: the standard target keeps `last-sync-state.json` (no
+  migration); the 3P target uses `last-sync-state-3p.json`. A target with no snapshot syncs purely
+  additively — reusing the standard snapshot against an empty 3P config would have made the
+  three-way merge read every synced server as "deleted in Desktop" and remove it from
+  `~/.claude.json` (regression-tested: `test_3p_first_sync_is_additive_never_deletes_code`,
+  mutation-checked).
+- Output lines carry the target label (e.g. `[3P Desktop]`); the Code config is re-loaded before
+  each target, so a deletion in Code reaches every target in one run, and a Desktop-side add
+  converges across targets via Code within two runs.
+- Docs rescoped: Desktop's **Code tab** reads `~/.claude.json` natively and needs nothing from this
+  tool; what it syncs is the **Claude tab** (Cowork/Chat), which reads Desktop's own config file —
+  standard and 3P builds alike.
+
 ## 2.0.2
 
 ### Fixed

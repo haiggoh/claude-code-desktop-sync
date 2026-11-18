@@ -21,7 +21,8 @@ steps that can't be automated.
   use the latter in hooks.)
 - Legacy engine (kept for the standalone `install.py` route and the SessionStart hook):
   `${CLAUDE_SKILL_DIR}/../../bin/sync_code_desktop.py` (plugin) or `~/.claude/desktop-sync/sync_code_desktop.py`
-- Sync state (per-server snapshot): `~/.claude/desktop-sync/last-sync-state.json` (v2: `last-sync-state-v2.json`)
+- Sync state (per-server snapshot, PER TARGET): `~/.claude/desktop-sync/last-sync-state.json` (standard
+  Desktop build), `last-sync-state-3p.json` (3P build); v2: `last-sync-state-v2.json`
 - Backups (timestamped, mode 600): `~/.claude/desktop-sync/backups/`
 - Full reference: the plugin's `docs/SYNC-REFERENCE.md` and `docs/PACKAGE-MAP.md`.
 
@@ -58,6 +59,8 @@ session, or run a sync now (above). Then have the user restart Claude Desktop so
 
 Claude Desktop is a separate app that doesn't read Claude Code's files or run its instructions; the
 only Desktop→Code bridge is the hook picking up Desktop config changes at the next Code session start.
+Desktop's Code tab reads `~/.claude.json` natively (nothing to sync there); the sync targets the
+Claude tab (Cowork/Chat) in both the standard and 3P Desktop builds.
 
 ## Safety
 The engine backs up any file before writing it and only ever edits the `mcpServers` block. On the very

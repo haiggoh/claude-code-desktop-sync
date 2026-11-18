@@ -6,10 +6,17 @@ Keeps the MCP-server configuration consistent between:
   - Claude Code:    ~/.claude.json                         (key: "mcpServers")
   - Claude Desktop: <platform Desktop config>              (key: "mcpServers")
 
-Desktop config location by platform:
-  - macOS:   ~/Library/Application Support/Claude/claude_desktop_config.json
-  - Windows: %APPDATA%\\Claude\\claude_desktop_config.json
-  - Linux:   $XDG_CONFIG_HOME/Claude/claude_desktop_config.json  (or ~/.config/Claude/...)
+Desktop config targets (one run syncs every discovered target whose config file exists):
+  - standard build:  macOS   ~/Library/Application Support/Claude/claude_desktop_config.json
+                     Windows %APPDATA%\\Claude\\claude_desktop_config.json
+                     Linux   $XDG_CONFIG_HOME/Claude/claude_desktop_config.json (or ~/.config/Claude/...)
+  - 3P build:        macOS   ~/Library/Application Support/Claude-3p/claude_desktop_config.json
+                     Windows %LOCALAPPDATA%\\Claude-3p\\claude_desktop_config.json
+                             (MSIX: %LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Local\\Claude-3p\\...)
+                     Linux   $XDG_CONFIG_HOME/Claude-3p/claude_desktop_config.json (or ~/.config/Claude-3p/...)
+  Each target keeps its OWN snapshot: last-sync-state.json for the standard build,
+  last-sync-state-3p.json for 3P (see desktop_config_targets()) -- a first sync against an
+  empty 3P config must be purely additive, never a mass delete from ~/.claude.json.
 
 Behaviour:
   - Silent auto-apply. Prints ONLY when something changed or a manual step is pending.
@@ -92,22 +99,49 @@ def say(msg=""):
     out_lines.append(msg)
 
 
-def desktop_config_path():
+def desktop_config_targets():
+    """All Claude Desktop config targets, as (label, config_path, state_file) tuples.
+
+    CLAUDE_DESKTOP_CONFIG set => exactly that one target, keeping the legacy state file
+    (unchanged contract for tests and non-standard setups). Otherwise the standard Desktop
+    config plus the third-party ("3P") build are discovered per platform
+    (claude.com/docs/third-party/claude-desktop/data-storage.md), each with its OWN snapshot:
+    the standard target keeps last-sync-state.json (no migration, no re-baseline); the 3P
+    target gets last-sync-state-3p.json. A target with no snapshot syncs purely additively --
+    reusing the standard snapshot against an empty 3P file would make the three-way merge read
+    every synced server as "deleted in Desktop" and remove it from ~/.claude.json.
+    """
     override = os.environ.get("CLAUDE_DESKTOP_CONFIG")
     if override:
-        return Path(override)
+        return [("Desktop", Path(override), STATE_FILE)]
     if sys.platform == "darwin":
-        return HOME / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+        base = HOME / "Library" / "Application Support"
+        return [
+            ("Desktop", base / "Claude" / "claude_desktop_config.json", STATE_FILE),
+            ("3P Desktop", base / "Claude-3p" / "claude_desktop_config.json",
+             SYNC_HOME / "last-sync-state-3p.json"),
+        ]
     if os.name == "nt":
-        base = os.environ.get("APPDATA")
-        base = Path(base) if base else HOME / "AppData" / "Roaming"
-        return base / "Claude" / "claude_desktop_config.json"
+        appdata = os.environ.get("APPDATA")
+        appdata = Path(appdata) if appdata else HOME / "AppData" / "Roaming"
+        local = os.environ.get("LOCALAPPDATA")
+        local = Path(local) if local else HOME / "AppData" / "Local"
+        return [
+            ("Desktop", appdata / "Claude" / "claude_desktop_config.json", STATE_FILE),
+            ("3P Desktop", local / "Claude-3p" / "claude_desktop_config.json",
+             SYNC_HOME / "last-sync-state-3p.json"),
+            ("3P Desktop (MSIX)",
+             local / "Packages" / "Claude_pzs8sxrjxfjjc" / "LocalCache" / "Local" / "Claude-3p"
+             / "claude_desktop_config.json",
+             SYNC_HOME / "last-sync-state-3p-msix.json"),
+        ]
     base = os.environ.get("XDG_CONFIG_HOME")
     base = Path(base) if base else HOME / ".config"
-    return base / "Claude" / "claude_desktop_config.json"
-
-
-DESKTOP_CONFIG = desktop_config_path()
+    return [
+        ("Desktop", base / "Claude" / "claude_desktop_config.json", STATE_FILE),
+        ("3P Desktop", base / "Claude-3p" / "claude_desktop_config.json",
+         SYNC_HOME / "last-sync-state-3p.json"),
+    ]
 
 
 # ---------- json helpers ----------
@@ -208,20 +242,20 @@ def same_server(code_entry, desk_entry):
 
 # ---------- state ----------
 
-def load_state():
+def load_state(state_file):
     """Returns (state_or_None, corrupt_bool). corrupt=True means the file exists but is unreadable
     -- distinct from a genuine first run (file absent)."""
-    if not STATE_FILE.exists():
+    if not state_file.exists():
         return None, False
     try:
-        return load_json(STATE_FILE), False
+        return load_json(state_file), False
     except Exception:
         return None, True
 
 
-def save_state(servers, remote_names, skills):
+def save_state(state_file, servers, remote_names, skills):
     SYNC_HOME.mkdir(parents=True, exist_ok=True)
-    write_json(STATE_FILE, {
+    write_json(state_file, {
         "servers": servers,
         "remote": sorted(remote_names),
         "skills": sorted(skills),
@@ -362,20 +396,24 @@ def _flush():
     text = "\n".join(out_lines).strip()
     if text:
         print(text)
+    out_lines.clear()  # per-target output: the next target must not re-print this one's lines
 
 
-def _run():
+def _run(label, desk_path, state_file):
+    """Sync ONE Desktop target. The Code config is re-loaded on every call -- a previous
+    target in the same run may have written it."""
+    tag = f"[{label}] "
     code = load_json(CODE_CONFIG)
-    desk = load_json(DESKTOP_CONFIG)
+    desk = load_json(desk_path)
 
     code_srv = code.get("mcpServers", {})
     desk_srv = desk.get("mcpServers", {})
     if not isinstance(code_srv, dict):
-        say(f"[claude-sync] '{CODE_CONFIG.name}' has a non-object mcpServers; skipping (fix it to sync).")
+        say(f"[claude-sync] {tag}'{CODE_CONFIG.name}' has a non-object mcpServers; skipping (fix it to sync).")
         _flush()
         return
     if not isinstance(desk_srv, dict):
-        say(f"[claude-sync] '{DESKTOP_CONFIG.name}' has a non-object mcpServers; skipping (fix it to sync).")
+        say(f"[claude-sync] {tag}'{desk_path.name}' has a non-object mcpServers; skipping (fix it to sync).")
         _flush()
         return
 
@@ -391,10 +429,10 @@ def _run():
     desk_stdio = {n: e for n, e in stdio_of(desk_srv).items() if n not in type_conflicts}
     remote_names = {n for n, e in code_srv.items() if is_remote(e)} - set(type_conflicts)
 
-    state, corrupt = load_state()
+    state, corrupt = load_state(state_file)
     if corrupt:
-        say(f"[claude-sync] snapshot at {STATE_FILE} is unreadable; skipping this run to avoid an "
-            f"unsafe merge. Delete that file to force a clean re-baseline.")
+        say(f"[claude-sync] {tag}snapshot at {state_file} is unreadable; skipping this target to avoid "
+            f"an unsafe merge. Delete that file to force a clean re-baseline.")
         _flush()
         return
     snap_servers = (state or {}).get("servers", {})
@@ -423,18 +461,18 @@ def _run():
         code["mcpServers"] = new_code_srv
         write_json(CODE_CONFIG, code)
         changed = True
-        say(f"[claude-sync] updated Claude Code config  (backup: {b})")
+        say(f"[claude-sync] {tag}updated Claude Code config  (backup: {b})")
         say("  (MCP changes take effect in your NEXT Claude Code session.)")
     if new_desk_srv != desk_srv:
-        b = backup(DESKTOP_CONFIG, stamp)
+        b = backup(desk_path, stamp)
         desk["mcpServers"] = new_desk_srv
-        write_json(DESKTOP_CONFIG, desk)
+        write_json(desk_path, desk)
         changed = True
-        say(f"[claude-sync] updated Claude Desktop config  (backup: {b})")
+        say(f"[claude-sync] {tag}updated Desktop config {desk_path}  (backup: {b})")
 
     def line(label, names):
         if names:
-            say(f"  {label}: {', '.join(sorted(names))}")
+            say(f"  {tag}{label}: {', '.join(sorted(names))}")
 
     if changed:
         line("+ added to Desktop", rep["added_desk"])
@@ -445,10 +483,10 @@ def _run():
         line("- removed from Code", rep["removed_code"])
 
     if rep["conflicts"]:
-        say(f"[claude-sync] CONFLICT: these servers were changed differently on BOTH sides and were "
+        say(f"[claude-sync] {tag}CONFLICT: these servers were changed differently on BOTH sides and were "
             f"left untouched -- resolve by hand: {', '.join(sorted(rep['conflicts']))}")
     if type_conflicts:
-        say(f"[claude-sync] TYPE CONFLICT: these names are a stdio server on one side and a "
+        say(f"[claude-sync] {tag}TYPE CONFLICT: these names are a stdio server on one side and a "
             f"remote/other server on the other; left BOTH untouched to avoid destroying a connector -- "
             f"rename or reconcile by hand: {', '.join(type_conflicts)}")
 
@@ -472,11 +510,11 @@ def _run():
             "in Claude Desktop's UI if you want them there too.")
 
     if (changed or new_skills or new_remote or unresolved or rep["conflicts"] or type_conflicts) and manual:
-        say("[claude-sync] manual steps (not file-syncable):")
+        say(f"[claude-sync] {tag}manual steps (not file-syncable):")
         for m in manual:
             say(f"  - {m}")
 
-    save_state(new_snapshot, remote_names, skills)
+    save_state(state_file, new_snapshot, remote_names, skills)
     _flush()
 
 
@@ -489,25 +527,45 @@ Usage:
 Unknown flags exit 2 with this usage on stderr. The no-argument route is the hook
 contract and is unchanged.
 
+Targets: with CLAUDE_DESKTOP_CONFIG set, exactly that one file is synced (legacy state file
+last-sync-state.json). Otherwise every discovered Desktop config whose file exists is synced
+in one run under one lock: the standard build (Claude/) plus third-party "3P" builds
+(Claude-3p/, incl. the Windows MSIX package path), each with its OWN snapshot
+(last-sync-state-3p.json for 3P) so a first sync against an empty 3P config is purely
+additive and never deletes servers from ~/.claude.json. The Code config is re-loaded before
+each target. --help lists the targets discovered on this machine.
+
 Environment variables read: CLAUDE_CODE_CONFIG, CLAUDE_DESKTOP_CONFIG, CLAUDE_SYNC_HOME
 (override the default config/state paths).
 """
+
+
+def usage_text():
+    text = USAGE.rstrip() + "\n\nDesktop targets discovered on this machine:\n"
+    for label, path, state in desktop_config_targets():
+        mark = "" if path.exists() else "   (config file not present — skipped this run)"
+        text += f"  - {label}: {path}   [state: {state.name}]{mark}\n"
+    return text
 
 
 def main():
     argv = sys.argv[1:]
     if argv:
         if argv in (["--help"], ["-h"]):
-            sys.stdout.write(USAGE)
+            sys.stdout.write(usage_text())
             return
-        sys.stderr.write("sync_code_desktop.py: unknown argument %r\n%s" % (argv[0], USAGE))
+        sys.stderr.write("sync_code_desktop.py: unknown argument %r\n%s" % (argv[0], usage_text()))
         sys.exit(2)
-    if not CODE_CONFIG.exists() or not DESKTOP_CONFIG.exists():
-        return  # one or both apps not installed here -> nothing to sync
+    if not CODE_CONFIG.exists():
+        return  # Claude Code config not present here -> nothing to sync
+    targets = [t for t in desktop_config_targets() if t[1].exists()]
+    if not targets:
+        return  # no Desktop config present -> nothing to sync
     if not acquire_lock():
         return  # another session is already syncing
     try:
-        _run()
+        for label, desk_path, state_file in targets:
+            _run(label, desk_path, state_file)
     finally:
         release_lock()
 

@@ -17,10 +17,18 @@
 | Claude Code MCP + state | `~/.claude.json` (all platforms) |
 | Claude Code settings/hooks | `~/.claude/settings.json` |
 | Claude Code skills | `~/.claude/skills/` |
-| Desktop config (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Desktop config (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
-| Desktop config (Linux) | `$XDG_CONFIG_HOME/Claude/claude_desktop_config.json` (or `~/.config/Claude/...`) |
-| Sync state + backups | `~/.claude/desktop-sync/` (override with `CLAUDE_SYNC_HOME`) |
+| Desktop config, standard build (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Desktop config, standard build (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Desktop config, standard build (Linux) | `$XDG_CONFIG_HOME/Claude/claude_desktop_config.json` (or `~/.config/Claude/...`) |
+| Desktop config, 3P build (macOS) | `~/Library/Application Support/Claude-3p/claude_desktop_config.json` |
+| Desktop config, 3P build (Windows) | `%LOCALAPPDATA%\Claude-3p\claude_desktop_config.json` (MSIX: `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\Claude-3p\...`) |
+| Desktop config, 3P build (Linux) | `$XDG_CONFIG_HOME/Claude-3p/claude_desktop_config.json` (or `~/.config/Claude-3p/...`) |
+| Sync state + backups | `~/.claude/desktop-sync/` (override with `CLAUDE_SYNC_HOME`); state is PER TARGET: `last-sync-state.json` (standard), `last-sync-state-3p.json` (3P) |
+
+**Desktop tabs:** Desktop's **Code tab** reads `~/.claude.json` natively — nothing to sync there. The
+**Claude tab** (Cowork/Chat) reads Desktop's own config file, which is what this tool syncs to, in both
+the standard and 3P builds. Each run syncs every discovered target whose config file exists (one lock;
+the Code config is re-loaded per target); `CLAUDE_DESKTOP_CONFIG` pins a single target.
 
 ## What syncs, what doesn't
 
@@ -41,8 +49,8 @@ Code → Desktop happens whenever the hook runs after you change something in Co
 
 ## Conflict handling
 Reconciliation is **per-server and content-based**, using a snapshot in
-`~/.claude/desktop-sync/last-sync-state.json` that records the exact last-synced value of each server
-on **each** side. No file-timestamp guessing is used (`~/.claude.json` is rewritten constantly by
+`~/.claude/desktop-sync/last-sync-state.json` (per target — see the table above) that records the
+exact last-synced value of each server on **each** side. No file-timestamp guessing is used (`~/.claude.json` is rewritten constantly by
 Claude Code for unrelated reasons, so its mtime is meaningless as a "what changed" signal).
 
 For each server:
