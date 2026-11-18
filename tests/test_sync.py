@@ -391,6 +391,11 @@ def test_override_is_single_target(sb):
     sb.run()
     check("fs" in read(sb.desk)["mcpServers"], "override target synced")
     check(all(p.read_bytes() == b for p, b in before.items()), "discovered targets untouched under override")
+    sync = Path(sb.env["CLAUDE_SYNC_HOME"])
+    check((sync / "last-sync-state.json").exists()
+          and "fs" in read(sync / "last-sync-state.json").get("servers", {}),
+          "override target uses the LEGACY state file")
+    check(not (sync / "last-sync-state-3p.json").exists(), "override does not create a 3P state file")
 
 
 def test_per_target_state_files(sb):
@@ -458,12 +463,43 @@ def test_wrong_shape_state_skips_target_but_not_others(sb):
     check("Traceback" not in out, "no crash")
 
 
+def test_legacy_state_preserved_on_3p_arrival(sb):
+    print("\n[upgrade: a pre-existing v2.0.2 legacy snapshot is used, not re-baselined, when the 3P target appears]")
+    std, threep = discovery_mode(sb)
+    threep.parent.mkdir(parents=True, exist_ok=True)
+    sync = Path(sb.env["CLAUDE_SYNC_HOME"])
+    sync.mkdir(parents=True, exist_ok=True)
+    # legacy snapshot as v2.0.2 wrote it: 'gone' was synced once, then deleted from Code
+    write(sync / "last-sync-state.json",
+          {"servers": {"gone": {"code": {"command": "/old"}, "desk": {"command": "/old"}}},
+           "remote": [], "skills": [], "updated": "2026-11-17 10:00:00"})
+    write(sb.code, {"mcpServers": {"fs": {"command": "/usr/bin/true"}}})
+    write(std, {"mcpServers": {"gone": {"command": "/old"}, "fs": {"command": "/usr/bin/true"}}})
+    write(threep, {"mcpServers": {}})
+    code_before = sb.code.read_bytes()
+    sb.run()
+    check(sb.code.read_bytes() == code_before and "gone" not in read(sb.code)["mcpServers"],
+          "upgrade: Code config untouched, 'gone' NOT resurrected into Code")
+    check("gone" not in read(std)["mcpServers"] and "fs" in read(std)["mcpServers"],
+          "upgrade: legacy snapshot drove the deletion from the standard target")
+    legacy = sync / "last-sync-state.json"
+    check(legacy.exists() and "gone" not in read(legacy).get("servers", {})
+          and "fs" in read(legacy).get("servers", {}),
+          "upgrade: legacy state file kept and updated in place (no re-baseline)")
+    threep_state = sync / "last-sync-state-3p.json"
+    check(threep_state.exists() and "fs" in read(threep_state).get("servers", {}),
+          "upgrade: 3P state newly created, additive (fs only)")
+    check("fs" in read(threep)["mcpServers"] and "gone" not in read(threep)["mcpServers"],
+          "upgrade: 3P target received only the live servers")
+
+
 def main():
     for fn in (test_3p_first_sync_is_additive_never_deletes_code, test_delete_in_code_reaches_both_targets,
                test_desktop_add_converges_across_targets, test_override_is_single_target,
                test_per_target_state_files, test_backup_names_are_per_target,
                test_manual_steps_header_keeps_target_label,
-               test_wrong_shape_state_skips_target_but_not_others):
+               test_wrong_shape_state_skips_target_but_not_others,
+               test_legacy_state_preserved_on_3p_arrival):
         scenario(fn)
     for fn in (test_push_pull_remove, test_first_run_clash, test_two_sided_conflict,
                test_command_change_detected, test_remote_in_desktop, test_malformed_mcpservers,
